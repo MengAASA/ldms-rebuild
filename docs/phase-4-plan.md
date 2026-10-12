@@ -311,9 +311,17 @@ Laid out as the user asked on 9 Oct 2026, after the old system's L&D dashboard.
   - The four small tiles show the number beside its icon and, under it, how the count is made up: trainings,
     participants and training days month by month with the highest month named (asked for 9 Oct 2026: data, not
     decoration). Total manpower shows its number only, as the user asked.
-  - The page is a bento grid: tiles of different sizes on twelve columns, total hours on the one dark tile.
-- **Average total hour** so far has the average per person, average hours by training type by month, and average
-  hours by department. Its layout hasn't been specified yet.
+  - The page is a bento grid: tiles of different sizes on twelve columns, total hours on the one dark tile. Every
+    column shows its number. (A version with coloured tiles and uneven card widths was tried on 9 Oct 2026 and
+    the user had it reverted.)
+- **Average total hour** (laid out by the user, 9 Oct 2026) has, in this order:
+  - Three cards: **average total hours**, **average public training hours** and **average OJT hours**.
+  - **All Department List (Average Total Hour)**: a full-width bar chart, each department's hours ÷ its headcount.
+  - **Average Monthly Total Training Hour**: hours ÷ manpower for each month, Public / In-house and OJT stacked.
+  - **One bar chart for each division**, with each of its departments' average; the division's own average
+    (its hours ÷ its headcount) is in the card's corner.
+  - Every average divides by **total manpower**, so public and OJT add up to the total. The old system divided
+    its public and OJT averages by the number of people who attended instead, so its three cards didn't add up.
 - **Export to Excel**: a sheet for the overview and one per chart, the same numbers (`/dashboard/export`).
 - **How the figures are counted**
   - *Total trainings*: trainings that started in the period and weren't cancelled (for a HOD: those with any of

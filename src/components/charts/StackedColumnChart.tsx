@@ -108,8 +108,12 @@ export function StackedColumnChart({
                             ) : null,
                           )}
                         </div>
-                        {i === peak && (
-                          <span className="num absolute text-[11px] font-semibold whitespace-nowrap text-ink-2" style={{ bottom: `calc(${pct}% + 4px)` }}>
+                        {totals[i] > 0 && (
+                          // Every column carries its number; the tallest in stronger ink. With many columns the others drop out on a phone, where they would run together.
+                          <span
+                            className={`num absolute text-[11px] whitespace-nowrap ${i === peak ? "font-semibold text-ink-2" : `font-medium text-ink-3 ${data.length > 12 ? "hidden sm:inline" : ""}`}`}
+                            style={{ bottom: `calc(${pct}% + 4px)` }}
+                          >
                             {format(totals[i])}
                           </span>
                         )}

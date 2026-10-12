@@ -113,7 +113,17 @@ test("L&D: the Dashboard's figures and charts agree with the reports and with th
   await page.getByRole("link", { name: "Average total hour" }).click();
   await expect(page).toHaveURL(/tab=average/, { timeout: 30_000 });
   await expect(page.getByRole("link", { name: "Average total hour" })).toHaveAttribute("aria-current", "page");
-  const byType = panel(page, "Average hours by training type").getByRole("table");
+  // Three averages, all over the same manpower, so public and OJT add up to the total; here it is all public.
+  const averageTotal = await figure(page, "Average total hours").innerText();
+  expect(averageTotal).toMatch(/^[0-9.]+ h$/);
+  await expect(figure(page, "Average public training hours")).toHaveText(averageTotal);
+  await expect(figure(page, "Average OJT hours")).toHaveText("0 h");
+  // Every department's average, then the same division by division.
+  const averages = page.getByRole("region", { name: /Average Total Hour.$/ });
+  await expect(panel(page, "All Department List (Average Total Hour)").getByRole("row", { name: /Finance/ }).getByRole("cell")).toHaveText("0 h");
+  expect(await averages.count()).toBeGreaterThan(2);
+  await expect(averages.getByRole("row", { name: /Stamping/ })).toHaveCount(2);
+  const byType = panel(page, "Average Monthly Total Training Hour").getByRole("table");
   await expect(byType.getByRole("row", { name: /April 2023/ }).getByRole("cell").last()).toHaveText("0 h");
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(/tab=average/, { timeout: 30_000 });

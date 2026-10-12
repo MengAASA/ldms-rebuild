@@ -1,6 +1,6 @@
 // A single-series column chart drawn in HTML: one hue, thin columns with a
-// rounded data end, recessive gridlines, the highest value labelled, every
-// value on hover or keyboard focus, and the same numbers in a table for
+// rounded data end, recessive gridlines, its value above every column, the
+// full value on hover or keyboard focus, and the same numbers in a table for
 // screen readers. Periods that haven't happened yet show as empty slots.
 
 export type ColumnPoint = {
@@ -28,6 +28,7 @@ export function ColumnChart({
   caption,
   format,
   axisFormat = format,
+  labelFormat = format,
   color,
   height = 180,
 }: {
@@ -37,6 +38,8 @@ export function ColumnChart({
   format: (n: number) => string;
   /** A shorter form for the axis, when the full one doesn't fit beside it. */
   axisFormat?: (n: number) => string;
+  /** A shorter form for the number above each column, when the full one is wider than a column. */
+  labelFormat?: (n: number) => string;
   /** The columns' colour as a background class, e.g. "bg-cobalt". Left out, the accent. */
   color?: string;
   height?: number;
@@ -84,9 +87,13 @@ export function ColumnChart({
                           className={`w-[56%] max-w-6 rounded-t-[4px] ${color ? `${color} opacity-90 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100` : "bg-accent transition-colors group-hover:bg-accent-deep group-focus-visible:bg-accent-deep"}`}
                           style={{ height: d.value > 0 ? `max(${pct}%, 3px)` : 0 }}
                         />
-                        {i === peak && (
-                          <span className="num absolute text-[11px] font-semibold whitespace-nowrap text-ink-2" style={{ bottom: `calc(${pct}% + 4px)` }}>
-                            {format(d.value)}
+                        {d.value > 0 && (
+                          // Every column carries its number; the tallest in stronger ink. With many columns the others drop out on a phone, where they would run together.
+                          <span
+                            className={`num absolute text-[11px] whitespace-nowrap ${i === peak ? "font-semibold text-ink-2" : `font-medium text-ink-3 ${data.length > 12 ? "hidden sm:inline" : ""}`}`}
+                            style={{ bottom: `calc(${pct}% + 4px)` }}
+                          >
+                            {labelFormat(d.value)}
                           </span>
                         )}
                         <span
@@ -114,19 +121,22 @@ export function ColumnChart({
           </div>
         </div>
       </div>
-      <table className="sr-only">
-        <caption>{caption}</caption>
-        <tbody>
-          {data
-            .filter((d) => !d.future)
-            .map((d) => (
-              <tr key={d.title}>
-                <th scope="row">{d.title}</th>
-                <td>{format(d.value)}</td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
+      {/* A table grows to fit its content whatever its width, so the wrapper is what is hidden. */}
+      <div className="sr-only">
+        <table>
+          <caption>{caption}</caption>
+          <tbody>
+            {data
+              .filter((d) => !d.future)
+              .map((d) => (
+                <tr key={d.title}>
+                  <th scope="row">{d.title}</th>
+                  <td>{format(d.value)}</td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      </div>
     </figure>
   );
 }

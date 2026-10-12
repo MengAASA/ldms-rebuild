@@ -5,12 +5,12 @@ import {
   Banknote,
   CalendarDays,
   ChartColumnStacked,
-  Clock,
   FileDown,
   GraduationCap,
   Presentation,
   UserCheck,
   Users,
+  Wrench,
   type LucideIcon,
 } from "lucide-react";
 import { DivisionMark } from "@/components/brand";
@@ -306,6 +306,7 @@ function TotalTab({ data, report }: TabProps) {
               caption={`Course cost by ${cost.unit}`}
               format={(n) => formatMoney(n)}
               axisFormat={compactMoney}
+              labelFormat={compactMoney}
               height={300}
             />
           ) : (
@@ -336,10 +337,15 @@ function TotalTab({ data, report }: TabProps) {
           }
         >
           {/* With many departments the chart keeps its columns readable and slides sideways inside the card. */}
-          <div className="overflow-x-auto pt-2">
+          <div className="overflow-x-auto pt-5">
             <div style={{ minWidth: byDepartment.length * 52 }}>
               <ColumnChart
-                data={byDepartment.map((d) => ({ label: d.shortName ?? d.name, short: d.shortName ?? d.name, title: d.name, value: d.hours }))}
+                data={byDepartment.map((d) => ({
+                  label: d.shortName ?? d.name,
+                  short: d.shortName ?? d.name,
+                  title: d.name,
+                  value: d.hours,
+                }))}
                 caption="Total man hours by department"
                 format={(n) => formatHours(n)}
                 height={280}
@@ -365,7 +371,7 @@ function TotalTab({ data, report }: TabProps) {
             description={`${plural(division.departments.length, "department")} · headcount ${division.headcount.toLocaleString("en-MY")}`}
             action={<span className="num text-[15px] font-semibold text-ink">{formatHours(division.hours)}</span>}
           >
-            <div className="overflow-x-auto pt-2">
+            <div className="overflow-x-auto pt-5">
               <div style={{ minWidth: division.departments.length * 52 }}>
                 <ColumnChart
                   data={division.departments.map((d) => ({ label: d.shortName ?? d.name, short: d.shortName ?? d.name, title: d.name, value: d.hours }))}
@@ -472,46 +478,126 @@ function TotalTab({ data, report }: TabProps) {
 // ---------- Average total hour ----------
 
 function AverageTab({ data, report }: TabProps) {
-  const { total, buckets } = data;
+  const { total, overview, buckets } = data;
+  // Every average divides by the same manpower, so public and OJT add up to the total.
+  const manpower = overview.manpower;
+  const average = perHead(overview.hours, manpower);
+  const publicAverage = perHead(overview.hoursByType.PUBLIC_INHOUSE, manpower);
+  const ojtAverage = perHead(overview.hoursByType.OJT, manpower);
+  const share = (hours: number) => `${overview.hours > 0 ? Math.round((hours / overview.hours) * 100) : 0}%`;
+  const publicShare = overview.hours > 0 ? (overview.hoursByType.PUBLIC_INHOUSE / overview.hours) * 100 : 0;
   const months = buckets.map((b, i) => ({
     label: b.label,
     short: b.short,
     title: b.title,
     group: String(b.year),
     future: b.future,
-    values: data.byType[i].map((h) => perHead(h, total.headcount)),
+    values: data.byType[i].map((h) => perHead(h, manpower)),
   }));
+  const typeIndex = (type: TrainingTypeCode) => TRAINING_TYPES.indexOf(type);
   const byDepartment = data.departments.map((d) => ({ ...d, value: d.average ?? 0 })).sort((a, b) => b.value - a.value || a.name.localeCompare(b.name));
+  // Each division with its departments (highest average first) and its own average: its hours ÷ its headcount.
+  const divisions = [...new Map(data.departments.map((d) => [d.division.id, d.division])).values()].map((division) => {
+    const departments = byDepartment.filter((d) => d.division.id === division.id);
+    const headcount = departments.reduce((sum, d) => sum + d.headcount, 0);
+    return {
+      ...division,
+      departments,
+      headcount,
+      average: perHead(
+        departments.reduce((sum, d) => sum + d.hours, 0),
+        headcount,
+      ),
+    };
+  });
 
   return (
     <div className="grid gap-5 lg:grid-cols-12">
-      <section aria-label="Training overview" className="flex flex-col gap-5 lg:col-span-4">
-        <dl className="relative flex flex-1 flex-col justify-center overflow-hidden rounded-xl bg-night p-6 text-white sm:p-7">
+      {/* Training overview: the average on the dark tile, its public and OJT parts beside it. */}
+      <section aria-label="Training overview" className="grid gap-5 lg:col-span-12 lg:grid-cols-12">
+        <dl className="relative flex flex-col justify-between gap-8 overflow-hidden rounded-xl bg-night p-6 text-white sm:p-7 lg:col-span-5">
           <svg aria-hidden viewBox="0 0 84 88" className="absolute right-6 bottom-0 hidden h-32 text-white opacity-[0.06] sm:block" fill="currentColor">
             {[34, 52, 70, 88].map((h, i) => (
               <rect key={h} x={i * 22} y={88 - h} width="16" height={h} rx="3" />
             ))}
           </svg>
           <div className="relative">
-            <dt className="text-[13px] text-night-text">Average total hour</dt>
-            <dd className="num mt-2 text-[52px] leading-none font-semibold tracking-tight">{total.average === null ? "–" : formatHours(total.average)}</dd>
-            <dd className="mt-2 text-[12.5px] text-night-muted">per person: total hours ÷ manpower</dd>
+            <dt className="text-[13px] text-night-text">Average total hours</dt>
+            <dd className="num mt-2 text-[56px] leading-none font-semibold tracking-tight">{formatHours(average)}</dd>
+            <dd className="mt-3 text-[13px] text-night-text">
+              <span className="num font-semibold text-white">{formatHours(overview.hours)}</span> over a manpower of{" "}
+              <span className="num font-semibold text-white">{manpower.toLocaleString("en-MY")}</span>
+            </dd>
+          </div>
+          <div className="relative">
+            <div className="flex h-2.5 gap-[2px] overflow-hidden rounded-full bg-night-2" aria-hidden>
+              {overview.hoursByType.PUBLIC_INHOUSE > 0 && <span className="bg-accent-bright" style={{ width: `${publicShare}%` }} />}
+              {overview.hoursByType.OJT > 0 && <span className="flex-1 bg-marigold" />}
+            </div>
+            <div className="mt-3 flex justify-between gap-4 text-[12.5px] text-night-muted">
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden className="size-2 shrink-0 rounded-[2px] bg-accent-bright" />
+                Public <span className="num font-semibold text-white">{share(overview.hoursByType.PUBLIC_INHOUSE)}</span>
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span aria-hidden className="size-2 shrink-0 rounded-[2px] bg-marigold" />
+                OJT <span className="num font-semibold text-white">{share(overview.hoursByType.OJT)}</span>
+              </span>
+            </div>
           </div>
         </dl>
-        <dl className="grid grid-cols-2 gap-5">
-          <Tile icon={Clock} tone="jade" label="Total hours" value={formatHours(total.hours)} sub="completed training" />
-          <Tile icon={Users} tone="cobalt" label="Total manpower" value={total.headcount.toLocaleString("en-MY")} sub="active, trainees not counted" />
+        <dl className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:col-span-7">
+          <Tile icon={GraduationCap} tone="jade" label="Average public training hours" value={formatHours(publicAverage)}>
+            <MiniColumns values={months.map((m) => m.values[typeIndex("PUBLIC_INHOUSE")])} buckets={buckets} color={TONE.jade.bar} what="h per person" />
+          </Tile>
+          <Tile icon={Wrench} tone="marigold" label="Average OJT hours" value={formatHours(ojtAverage)}>
+            <MiniColumns values={months.map((m) => m.values[typeIndex("OJT")])} buckets={buckets} color={TONE.marigold.bar} what="h per person" />
+          </Tile>
         </dl>
       </section>
 
-      <Panel className="lg:col-span-8" title="Average hours by training type" description={`Hours per person, by the ${data.unit} the training started`}>
+      {/* One department has nothing to be compared with. */}
+      {byDepartment.length > 1 && (
+        <Panel
+          className="lg:col-span-12"
+          title="All Department List (Average Total Hour)"
+          description="Each department's completed hours ÷ its headcount, the highest first"
+          action={
+            <Link href={report("department-hours")} className="link inline-flex items-center gap-1 font-medium">
+              Department report <ArrowRight size={13} aria-hidden />
+            </Link>
+          }
+        >
+          <div className="overflow-x-auto pt-5">
+            <div style={{ minWidth: byDepartment.length * 52 }}>
+              <ColumnChart
+                data={byDepartment.map((d) => ({
+                  label: d.shortName ?? d.name,
+                  short: d.shortName ?? d.name,
+                  title: `${d.name} (headcount ${d.headcount})`,
+                  value: d.value,
+                }))}
+                caption="Average total hours by department"
+                format={(n) => formatHours(n)}
+                height={280}
+              />
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      <Panel
+        className="lg:col-span-12"
+        title="Average Monthly Total Training Hour"
+        description={`Completed hours ÷ manpower, by the ${data.unit} the training started`}
+      >
         {total.hours > 0 ? (
           <StackedColumnChart
             series={SERIES}
             data={months}
             caption={`Average hours per person by ${data.unit} and training type`}
             format={(n) => formatHours(n)}
-            height={250}
+            height={300}
           />
         ) : (
           <EmptyState compact icon={ChartColumnStacked} title="No completed training in this period">
@@ -520,41 +606,41 @@ function AverageTab({ data, report }: TabProps) {
         )}
       </Panel>
 
-      {byDepartment.length > 1 && (
-        <Panel
-          className="lg:col-span-12"
-          title="Average hours by department"
-          description="Total hours ÷ headcount (active staff, trainees not counted)"
-          action={
-            <Link href={report("department-hours")} className="link inline-flex items-center gap-1 font-medium">
-              Department report <ArrowRight size={13} aria-hidden />
-            </Link>
-          }
-        >
-          <BarList
-            label="Average hours by department"
-            columns
-            rows={byDepartment.map((d) => ({
-              key: d.id,
-              label: <DepartmentName department={d} />,
-              value: d.value,
-              text: formatHours(d.value),
-              note: `headcount ${d.headcount}`,
-              href: report("staff-hours", d.id),
-            }))}
-          />
-        </Panel>
-      )}
+      {/* The same averages division by division: one chart for each, with its departments. */}
+      {divisions.length > 1 &&
+        divisions.map((division, n) => (
+          <Panel
+            key={division.id}
+            // An odd one out at the end takes the whole row.
+            className={n === divisions.length - 1 && divisions.length % 2 === 1 ? "lg:col-span-12" : "lg:col-span-6"}
+            title={
+              <span className="inline-flex items-center gap-2">
+                <DivisionMark tone={divisionTone(division.id)} />
+                {division.name} (Average Total Hour)
+              </span>
+            }
+            description={`${plural(division.departments.length, "department")} · headcount ${division.headcount.toLocaleString("en-MY")}`}
+            action={<span className="num text-[15px] font-semibold text-ink">{formatHours(division.average)}</span>}
+          >
+            <div className="overflow-x-auto pt-5">
+              <div style={{ minWidth: division.departments.length * 52 }}>
+                <ColumnChart
+                  data={division.departments.map((d) => ({
+                    label: d.shortName ?? d.name,
+                    short: d.shortName ?? d.name,
+                    title: `${d.name} (headcount ${d.headcount})`,
+                    value: d.value,
+                  }))}
+                  caption={`Average total hours by department, ${division.name}`}
+                  format={(h) => formatHours(h)}
+                  color={TONE[divisionTone(division.id)].bar}
+                  height={200}
+                />
+              </div>
+            </div>
+          </Panel>
+        ))}
     </div>
-  );
-}
-
-function DepartmentName({ department }: { department: { name: string; division: { id: number } } }) {
-  return (
-    <span className="inline-flex items-center gap-2">
-      <DivisionMark tone={divisionTone(department.division.id)} />
-      {department.name}
-    </span>
   );
 }
 

@@ -47,6 +47,12 @@ export async function GET(request: Request) {
       { figure: "Total training days", value: overview.days, counts: "Each training's days × the people who completed it" },
       { figure: "Total hours", value: overview.hours, counts: "Each training's hours × the people who completed it" },
       ...TRAINING_TYPES.map((t) => ({ figure: `Total ${TRAINING_TYPE_LABELS[t]} hours`, value: overview.hoursByType[t], counts: "" })),
+      { figure: "Average total hours", value: perHead(overview.hours, overview.manpower), counts: "Total hours ÷ total manpower" },
+      ...TRAINING_TYPES.map((t) => ({
+        figure: `Average ${TRAINING_TYPE_LABELS[t]} hours`,
+        value: perHead(overview.hoursByType[t], overview.manpower),
+        counts: "Its total hours ÷ total manpower",
+      })),
     ],
   );
 

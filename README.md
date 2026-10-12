@@ -9,7 +9,7 @@ The plan lives in the **LDMS Rebuild Roadmap** artifact; this repo follows its p
 | 1 | Foundation: org chart, staff, sign-in, permissions, audit log | **Built** |
 | 2 | Training core: trainings, participants, attendance, OJT | **Built** (6 Oct 2026): Trainings, Participants, My Training, OJT for clerks, Certificates, Reports and staff training history; see `docs/phase-2-plan.md`. Still open: the 16 course feedback questions are placeholder wording until L&D supplies them |
 | 3 | Workflows: PME, TNA, TNI, skill matrix | **Built** (8 Oct 2026): PME with the Approvals page, skill matrix, TNA (My TNA, by job grade, training options, summary, opening next year early) and TNI; see `docs/phase-3-plan.md` |
-| 4 | Reminder emails, notifications, the daily job, dashboards | **In progress**: plan approved 8 Oct 2026 (`docs/phase-4-plan.md`); module 0 (groundwork: email with its Off / Test / Live mode, the daily job, the Jobs and email screen) built; module 1 (notifications) built; module 2 (reminder emails, with a closing date for TNA and TNI) built; module 3 (the Dashboard: training figures and charts; the Departmental training type removed) built |
+| 4 | Reminder emails, notifications, the daily job, dashboards | **In progress**: plan approved 8 Oct 2026 (`docs/phase-4-plan.md`); module 0 (groundwork: email with its Off / Test / Live mode, the daily job, the Jobs and email screen) built; module 1 (notifications) built; module 2 (reminder emails, with a closing date for TNA and TNI) built; module 3 (the Dashboard: training figures and charts; the Departmental training type removed) built; module 4 (the Dashboard's Progress tab: PME, skill matrix, TNA and TNI by department) built |
 | 5 | Migration rehearsal and cutover | |
 
 ## Run it locally

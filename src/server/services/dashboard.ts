@@ -7,6 +7,7 @@ import { isAdmin, type SessionUser } from "../permissions";
 import {
   bucketKey,
   costSummary,
+  countStages,
   periodBuckets,
   topTrainings,
   trainerTotals,
@@ -17,9 +18,13 @@ import {
   type BucketUnit,
 } from "../rules/dashboard";
 import { isActiveHeadcount } from "../rules/headcount";
+import { pmeStage, type PmeStage } from "../rules/pme";
+import { SKILL_DESIGNATIONS, SKILL_STAGES, skillOpenQuarter, skillStage } from "../rules/skill";
+import { JOB_GRADES, TNA_BY_GRADE_WHERE, TNA_OWN_WHERE, TNA_STAGES, tnaStage } from "../rules/tna";
 import { departmentTotals, grandTotal, inStaffReport, reportPeriod, round2, staffTotals } from "../rules/report";
 import { countsTowardHours, trainingDays, trainingHours, trainingPhase } from "../rules/training";
 import { ensure } from "./org";
+import { tnaOpen } from "./tna";
 import { hoursSelect, reportDepartments, staffWhere, startsIn, type ReportFilters } from "./report";
 
 // Read-only figures for the overview. Hours always come from trainingHours and
@@ -310,3 +315,80 @@ export async function trainingDashboard(user: SessionUser, f: ReportFilters, tod
 }
 
 export type TrainingDashboard = Awaited<ReturnType<typeof trainingDashboard>>;
+
+// ---------- The Dashboard's Progress tab (phase 4, module 4) ----------
+
+/** The PME stages the Progress tab charts, in the order work moves through them. Not-required PMEs are left out. */
+export const PROGRESS_PME_STAGES = ["TO_EVALUATE", "TO_ACKNOWLEDGE", "TO_VERIFY", "VERIFIED", "IN_PERIOD"] as const satisfies readonly PmeStage[];
+
+/**
+ * How far each department has got with PME, the skill matrix, TNA and TNI, for
+ * the staff and departments the user's reports cover. PMEs are those of
+ * trainings that started in the period; the skill matrix is the quarter being
+ * filled in; TNA and TNI are the year being filled in. Each record is counted
+ * under the department its staff member is in now.
+ */
+export async function progressDashboard(user: SessionUser, f: ReportFilters, today: Date) {
+  ensure(user, "report.view");
+  const period = reportPeriod(f.from, f.to, today);
+  const staffScope = staffWhere(user, {}, false);
+  const quarter = skillOpenQuarter(today);
+  const year = await tnaOpen(today);
+  const departments = await reportDepartments(user);
+  const departmentIds = departments.map((d) => d.id);
+  const inQuarter = { year: quarter.year, quarter: quarter.quarter };
+
+  const [pmes, skillStaff, tnaStaff, gradeHeadcounts, gradeTnas, tnis] = await Promise.all([
+    db.pme.findMany({
+      where: { status: { not: "NOT_REQUIRED" }, participant: { staff: staffScope, training: { status: "SCHEDULED", ...startsIn(period) } } },
+      select: { status: true, periodEnd: true, participant: { select: { staff: { select: { departmentId: true } } } } },
+    }),
+    // Staff who can have a matrix in the quarter: active, or with one already on record for it.
+    db.staff.findMany({
+      where: { AND: [staffScope, { designation: { in: [...SKILL_DESIGNATIONS] } }, { OR: [{ status: "ACTIVE" }, { skillEvaluations: { some: inQuarter } }] }] },
+      select: { departmentId: true, skillEvaluations: { where: inQuarter, select: { status: true, returnReason: true } } },
+    }),
+    // Staff who fill in their own TNA: those who do today, or who have one on record for the year.
+    db.staff.findMany({
+      where: { AND: [staffScope, { OR: [TNA_OWN_WHERE, { tnas: { some: { year } } }] }] },
+      select: { departmentId: true, tnas: { where: { year }, select: { status: true, returnReason: true } } },
+    }),
+    // A job grade's TNA covers everyone on that grade in a department: one record for each grade in use.
+    db.staff.groupBy({ by: ["departmentId", "jobGrade"], where: { ...TNA_BY_GRADE_WHERE, departmentId: { in: departmentIds } }, _count: { _all: true } }),
+    db.tna.findMany({ where: { year, departmentId: { in: departmentIds } }, select: { departmentId: true, jobGrade: true, status: true, returnReason: true } }),
+    db.tni.findMany({
+      where: { year, departmentId: { in: departmentIds } },
+      select: { departmentId: true, updatedAt: true, updatedBy: { select: { name: true } }, _count: { select: { items: true } } },
+    }),
+  ]);
+
+  const gradeRecords = departments.flatMap((d) =>
+    JOB_GRADES.flatMap((jobGrade) => {
+      const tna = gradeTnas.find((t) => t.departmentId === d.id && t.jobGrade === jobGrade) ?? null;
+      const inUse = gradeHeadcounts.some((h) => h.departmentId === d.id && h.jobGrade === jobGrade && h._count._all > 0);
+      return inUse || tna ? [{ departmentId: d.id, stage: tnaStage(tna) }] : [];
+    }),
+  );
+
+  return {
+    period,
+    quarter,
+    year,
+    pme: countStages(
+      PROGRESS_PME_STAGES,
+      departments,
+      pmes.map((p) => ({ departmentId: p.participant.staff.departmentId, stage: pmeStage(p, today) as (typeof PROGRESS_PME_STAGES)[number] })),
+    ),
+    skill: countStages(
+      SKILL_STAGES,
+      departments,
+      skillStaff.map((s) => ({ departmentId: s.departmentId, stage: skillStage(s.skillEvaluations[0]) })),
+    ),
+    tna: countStages(TNA_STAGES, departments, [...tnaStaff.map((s) => ({ departmentId: s.departmentId, stage: tnaStage(s.tnas[0]) })), ...gradeRecords]),
+    /** Each department with its TNI for the year, or null when none is saved. */
+    tni: departments.map((department) => ({ department, tni: tnis.find((t) => t.departmentId === department.id) ?? null })),
+    isAdmin: isAdmin(user),
+  };
+}
+
+export type ProgressDashboard = Awaited<ReturnType<typeof progressDashboard>>;

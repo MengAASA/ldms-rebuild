@@ -1,11 +1,14 @@
 import ExcelJS from "exceljs";
 import { formatDateRange, nowInMalaysia } from "@/lib/format";
 import { TRAINING_TYPE_LABELS, TRAINING_TYPES } from "@/lib/validation/training";
-import { HOURS, MONEY, sheet, type Row } from "@/server/excel";
+import { DATE, HOURS, MONEY, sheet, type Row } from "@/server/excel";
 import { can } from "@/server/permissions";
 import { perHead } from "@/server/rules/dashboard";
+import { PME_STAGE_LABELS } from "@/server/rules/pme";
 import { round2 } from "@/server/rules/report";
-import { trainingDashboard } from "@/server/services/dashboard";
+import { quarterLabel, SKILL_STAGE_LABELS, SKILL_STAGES } from "@/server/rules/skill";
+import { TNA_STAGE_LABELS, TNA_STAGES } from "@/server/rules/tna";
+import { PROGRESS_PME_STAGES, progressDashboard, trainingDashboard } from "@/server/services/dashboard";
 import { getCurrentUser } from "@/server/session";
 import { parseReportFilters } from "../../reports/filters";
 
@@ -21,7 +24,7 @@ export async function GET(request: Request) {
   const params = new URL(request.url).searchParams;
   // Only the period, as on the screen; the cost sheet follows the cost chart's year when one is chosen.
   const { from, to } = parseReportFilters(Object.fromEntries(params));
-  const costYear = /^d{4}$/.test(params.get("costYear") ?? "") ? Number(params.get("costYear")) : undefined;
+  const costYear = /^\d{4}$/.test(params.get("costYear") ?? "") ? Number(params.get("costYear")) : undefined;
   const data = await trainingDashboard(user, { from, to }, nowInMalaysia(), costYear);
   const covers = `Trainings that started ${formatDateRange(day(data.period.from), day(data.period.to))}`;
   const period = data.unit === "month" ? "Month" : "Year";
@@ -179,6 +182,81 @@ export async function GET(request: Request) {
       { period: "Total", cost: data.cost.total },
     );
   }
+
+  // ---------- Progress: one sheet for each of PME, skill matrix, TNA and TNI ----------
+  const progress = await progressDashboard(user, { from, to }, nowInMalaysia());
+  const stageSheet = <S extends string>(
+    name: string,
+    title: string,
+    what: string,
+    stages: readonly S[],
+    labels: Record<S, string>,
+    counted: { rows: { department: { name: string; division: { name: string } }; counts: Record<S, number> }[]; total: Record<S, number> },
+  ) => {
+    const all = (counts: Record<S, number>) => stages.reduce((a, s) => a + counts[s], 0);
+    sheet(
+      wb,
+      name,
+      title,
+      what,
+      [
+        { header: "No", key: "no", width: 6 },
+        { header: "Division", key: "division", width: 24 },
+        { header: "Department", key: "department", width: 30 },
+        ...stages.map((s) => ({ header: labels[s], key: s, width: 18 })),
+        { header: "Total", key: "all", width: 9 },
+      ],
+      counted.rows.map((r) => ({ division: r.department.division.name, department: r.department.name, ...r.counts, all: all(r.counts) }) as Row),
+      { department: "Total", ...counted.total, all: all(counted.total) } as Row,
+    );
+  };
+  stageSheet(
+    "PME progress",
+    "PME by department",
+    `PMEs of ${covers.charAt(0).toLowerCase()}${covers.slice(1)}, by where each stands. One in its evaluation period isn't due yet.`,
+    PROGRESS_PME_STAGES,
+    PME_STAGE_LABELS,
+    progress.pme,
+  );
+  stageSheet(
+    "Skill matrix progress",
+    `Skill matrix by department, ${quarterLabel(progress.quarter)}`,
+    "Non-executive and contract staff, by where each one's matrix stands for the quarter being filled in.",
+    SKILL_STAGES,
+    SKILL_STAGE_LABELS,
+    progress.skill,
+  );
+  stageSheet(
+    "TNA progress",
+    `TNA by department, ${progress.year}`,
+    "Each person who fills in their own TNA, and each job grade's TNA, by where it stands for the year being filled in.",
+    TNA_STAGES,
+    TNA_STAGE_LABELS,
+    progress.tna,
+  );
+  sheet(
+    wb,
+    "TNI progress",
+    `TNI by department, ${progress.year}`,
+    "Whether each department has saved its training needs identification for the year.",
+    [
+      { header: "No", key: "no", width: 6 },
+      { header: "Division", key: "division", width: 24 },
+      { header: "Department", key: "department", width: 30 },
+      { header: "Saved", key: "saved", width: 8 },
+      { header: "Last Saved", key: "updatedAt", width: 12, numFmt: DATE },
+      { header: "Saved By", key: "updatedBy", width: 30 },
+      { header: "Rows", key: "rows", width: 7 },
+    ],
+    progress.tni.map(({ department, tni }) => ({
+      division: department.division.name,
+      department: department.name,
+      saved: tni ? "Yes" : "No",
+      updatedAt: tni?.updatedAt ?? null,
+      updatedBy: tni?.updatedBy?.name ?? "",
+      rows: tni?._count.items ?? 0,
+    })),
+  );
 
   const stamp = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
   const buffer = await wb.xlsx.writeBuffer();

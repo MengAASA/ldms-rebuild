@@ -342,6 +342,34 @@ Laid out as the user asked on 9 Oct 2026, after the old system's L&D dashboard.
   - A period of up to two years is drawn month by month; a longer one, year by year.
   - The overview keeps its cards; its *Training at PHN* heading links to the Dashboard.
 
+### Module 4: Dashboard, progress (built 12 Oct 2026, merged)
+
+A third tab on the Dashboard, **Progress**, beside *Total man hour* and *Average total hour* (the user chose a tab
+over a separate screen, 12 Oct 2026). For the same people as the other tabs, and each record counted under the
+department its staff member is in now (`progressDashboard` in `services/dashboard.ts`, `countStages` in
+`rules/dashboard.ts`).
+
+- **Four cards**, each the share finished, a bar split by stage, and "x of y":
+  - *PME verified*: of the PMEs that are due. One still inside its evaluation period isn't due and isn't counted.
+  - *Skill matrix approved*, for the quarter being filled in: of the non-executive and contract staff who need one.
+  - *TNA approved*, for the year being filled in: of the people who fill in their own, plus one for each job
+    grade in use in a department.
+  - *TNI saved*, for the same year: of the departments.
+- **PME by department**, **Skill matrix by department** and **TNA by department**: one stacked column for each
+  department, split by where its records stand. Colours mean the same in all three: teal finished, gold waiting
+  on someone, coral needing attention (sent back, or a PME waiting for the HOD), grey not started.
+- **TNI by department**: a list, saved (with the date and number of rows) or not yet.
+- **PMEs waiting for the HOD**: the five departments with the most, each opening those PMEs in the PME list.
+- **Export to Excel** gains a sheet for each of the four.
+- **Decided while building**
+  - **Only PME follows the start and end dates** (PMEs of trainings that started in the period). The skill
+    matrix is always the quarter being filled in, and TNA and TNI the year being filled in: they have no other
+    period that is "current".
+  - **No chart for each division on this tab** (my recommendation; the user didn't object): with three charted
+    workflows that would be three more charts for every division.
+  - A person with one department sees one column in each chart and no ranking of departments.
+- Fixed with it: the cost chart's year wasn't passed on to the Excel export.
+
 ## 8. Data model
 
 ```prisma

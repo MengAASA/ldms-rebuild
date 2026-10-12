@@ -154,3 +154,28 @@ export function costSummary(trainings: { cost: number | null; type: string }[]):
     withoutCost: trainings.filter((t) => t.cost === null && t.type !== "OJT").length,
   };
 }
+
+// ---------- The Progress tab (phase 4, module 4) ----------
+
+/**
+ * How many records stand at each stage, department by department: one row for
+ * every department given (zeros when it has none), in the order given, and a
+ * total over them. A record in a department that isn't listed is left out.
+ */
+export function countStages<S extends string, D extends { id: number }>(stages: readonly S[], departments: D[], records: { departmentId: number; stage: S }[]) {
+  const empty = () => Object.fromEntries(stages.map((s) => [s, 0])) as Record<S, number>;
+  const byDepartment = new Map(departments.map((d) => [d.id, empty()]));
+  const total = empty();
+  for (const r of records) {
+    const counts = byDepartment.get(r.departmentId);
+    if (!counts || !(r.stage in total)) continue;
+    counts[r.stage] += 1;
+    total[r.stage] += 1;
+  }
+  return { rows: departments.map((department) => ({ department, counts: byDepartment.get(department.id)! })), total };
+}
+
+/** A whole-number percentage of a total; 0 when there is nothing to divide by. */
+export function percent(part: number, whole: number): number {
+  return whole > 0 ? Math.round((part / whole) * 100) : 0;
+}

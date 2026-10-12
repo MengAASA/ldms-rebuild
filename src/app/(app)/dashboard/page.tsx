@@ -26,11 +26,12 @@ import { divisionTone, TONE, type Tone } from "@/lib/tones";
 import { DESIGNATION_LABELS, type DESIGNATIONS } from "@/lib/validation/staff";
 import { TRAINING_TYPE_LABELS, TRAINING_TYPES, type TrainingTypeCode } from "@/lib/validation/training";
 import { perHead, type Bucket } from "@/server/rules/dashboard";
-import { trainingDashboard, type TrainingDashboard } from "@/server/services/dashboard";
+import { progressDashboard, trainingDashboard, type TrainingDashboard } from "@/server/services/dashboard";
 import { requirePermission } from "@/server/session";
 import { parseReportFilters, reportQuery } from "../reports/filters";
 import { PeriodLabel, ReportFilterBar } from "../reports/ReportParts";
 import { CostYear } from "./CostYear";
+import { ProgressTab } from "./ProgressTab";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
@@ -53,7 +54,9 @@ const DESIGNATION_TONE: Record<(typeof DESIGNATIONS)[number], Tone> = {
 const TABS = [
   { key: "total", label: "Total man hour" },
   { key: "average", label: "Average total hour" },
+  { key: "progress", label: "Progress" },
 ] as const;
+type TabKey = (typeof TABS)[number]["key"];
 
 /** 2,500 → "2.5K" beside a chart's axis, where "RM 2,500.00" doesn't fit. */
 const compactMoney = (n: number) =>
@@ -64,8 +67,10 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) 
 /**
  * Training in charts, for the same people as the reports and adding up the
  * same way: L&D see all of PHN, a HOD their departments, a division head
- * their divisions. Two tabs, as on the old system's dashboard: total man
- * hours (?tab=total, the default) and average hours per person (?tab=average).
+ * their divisions. Three tabs: total man hours (?tab=total, the default) and
+ * average hours per person (?tab=average), as on the old system's dashboard,
+ * and how far each department has got with PME, the skill matrix, TNA and TNI
+ * (?tab=progress).
  * The only filter is the period; the cost chart can also be set to one year
  * (?costYear=2026).
  */
@@ -75,15 +80,22 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   // Only the period: a division or department in the address is ignored.
   const { from, to } = parseReportFilters(sp);
   const f = { from, to };
-  const average = one(sp.tab) === "average";
+  const tab: TabKey = TABS.find((t) => t.key === one(sp.tab))?.key ?? "total";
+  const today = nowInMalaysia();
   const costYear = /^\d{4}$/.test(one(sp.costYear)) ? Number(one(sp.costYear)) : undefined;
-  const data = await trainingDashboard(user, f, nowInMalaysia(), costYear);
-  const { period } = data;
+  // Each tab loads only its own figures.
+  const [data, progress] = await Promise.all([
+    tab === "progress" ? null : trainingDashboard(user, f, today, costYear),
+    tab === "progress" ? progressDashboard(user, f, today) : null,
+  ]);
+  const period = (data ?? progress)!.period;
+  const departmentCount = data ? data.departments.length : progress!.tni.length;
+  const shownCostYear = data ? (data.cost?.year ?? null) : (costYear ?? null);
 
-  const query = (tab: boolean) => {
+  const query = (key: TabKey) => {
     const params = new URLSearchParams(reportQuery(f));
-    if (tab) params.set("tab", "average");
-    if (data.cost?.year) params.set("costYear", String(data.cost.year));
+    if (key !== "total") params.set("tab", key);
+    if (shownCostYear) params.set("costYear", String(shownCostYear));
     const s = params.toString();
     return s ? `?${s}` : "";
   };
@@ -97,32 +109,32 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         title="Dashboard"
         meta={
           <>
-            <span>Training</span>
+            <span>{tab === "progress" ? "PME, skill matrix, TNA and TNI" : "Training"}</span>
             <PeriodLabel period={period} />
-            <span>{data.isAdmin ? "All of PHN" : plural(data.departments.length, "department")}</span>
+            <span>{(data ?? progress)!.isAdmin ? "All of PHN" : plural(departmentCount, "department")}</span>
           </>
         }
         actions={
-          <a href={withBasePath(`/dashboard/export${query(false)}`)} className="btn">
+          <a href={withBasePath(`/dashboard/export${query("total")}`)} className="btn">
             <FileDown size={15} aria-hidden /> Export to Excel
           </a>
         }
       />
 
       <div className="-mt-5">
-        <ReportFilterBar f={f} period={period} departments={[]} clearHref={`/dashboard${average ? "?tab=average" : ""}`}>
-          {average && <input type="hidden" name="tab" value="average" />}
-          {data.cost?.year && <input type="hidden" name="costYear" value={data.cost.year} />}
+        <ReportFilterBar f={f} period={period} departments={[]} clearHref={`/dashboard${tab === "total" ? "" : `?tab=${tab}`}`}>
+          {tab !== "total" && <input type="hidden" name="tab" value={tab} />}
+          {shownCostYear && <input type="hidden" name="costYear" value={shownCostYear} />}
         </ReportFilterBar>
       </div>
 
       <nav aria-label="Dashboard" className="flex gap-1 border-b border-rule">
         {TABS.map((t) => {
-          const active = (t.key === "average") === average;
+          const active = t.key === tab;
           return (
             <Link
               key={t.key}
-              href={`/dashboard${query(t.key === "average")}`}
+              href={`/dashboard${query(t.key)}`}
               aria-current={active ? "page" : undefined}
               className={`border-b-2 px-3 py-2 text-[13.5px] whitespace-nowrap ${
                 active ? "border-accent font-semibold text-ink" : "border-transparent text-ink-2 hover:border-rule-strong hover:text-ink"
@@ -134,7 +146,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         })}
       </nav>
 
-      {average ? <AverageTab data={data} report={report} /> : <TotalTab data={data} report={report} />}
+      {progress ? (
+        <ProgressTab data={progress} period={period} />
+      ) : tab === "average" ? (
+        <AverageTab data={data!} report={report} />
+      ) : (
+        <TotalTab data={data!} report={report} />
+      )}
     </div>
   );
 }

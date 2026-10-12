@@ -34,6 +34,7 @@ export function StackedColumnChart({
   caption,
   format,
   height = 220,
+  whole = false,
 }: {
   series: StackSeries[];
   data: StackPoint[];
@@ -41,10 +42,14 @@ export function StackedColumnChart({
   caption: string;
   format: (n: number) => string;
   height?: number;
+  /** The values are counts: the axis stops at whole numbers (4, 2, 0), never 2.5. */
+  whole?: boolean;
 }) {
   const totals = data.map((d) => sum(d.values));
   const max = Math.max(0, ...totals);
-  const top = niceMax(max);
+  const nice = niceMax(max);
+  // For counts, the top and its half must both be whole: the next even number up.
+  const top = whole && (nice % 2 !== 0 || !Number.isInteger(nice)) ? Math.max(2, Math.ceil(nice / 2) * 2) : nice;
   const ticks = [top, top / 2, 0];
   const peak = max > 0 ? totals.indexOf(max) : -1;
   // More than a year of months: one letter each, or the labels run together.

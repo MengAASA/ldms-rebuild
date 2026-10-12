@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { bucketKey, costSummary, MAX_MONTHS, perHead, periodBuckets, stackHours, sumByBucket, topByHours, topTrainings, trainerTotals } from "@/server/rules/dashboard";
+import {
+  bucketKey,
+  costSummary,
+  countStages,
+  percent,
+  MAX_MONTHS,
+  perHead,
+  periodBuckets,
+  stackHours,
+  sumByBucket,
+  topByHours,
+  topTrainings,
+  trainerTotals,
+} from "@/server/rules/dashboard";
 
 const day = (d: string) => new Date(`${d}T00:00:00Z`);
 const today = day("2026-10-09");
@@ -165,5 +178,36 @@ describe("the trainings that gave the most man hours", () => {
     expect(top).toHaveLength(5);
     expect(top[0].title).toBe("T7");
     expect(top.some((t) => t.title === "T0")).toBe(false);
+  });
+});
+
+describe("where each department's records stand", () => {
+  const stages = ["NOT_STARTED", "DRAFT", "APPROVED"] as const;
+  const departments = [
+    { id: 1, name: "Stamping" },
+    { id: 2, name: "Finance" },
+    { id: 3, name: "IT" },
+  ];
+  const counted = countStages(stages, departments, [
+    { departmentId: 1, stage: "APPROVED" },
+    { departmentId: 1, stage: "APPROVED" },
+    { departmentId: 1, stage: "DRAFT" },
+    { departmentId: 2, stage: "NOT_STARTED" },
+    { departmentId: 9, stage: "APPROVED" },
+  ]);
+  it("counts each stage for each department, in the departments' order", () => {
+    expect(counted.rows.map((r) => [r.department.name, r.counts])).toEqual([
+      ["Stamping", { NOT_STARTED: 0, DRAFT: 1, APPROVED: 2 }],
+      ["Finance", { NOT_STARTED: 1, DRAFT: 0, APPROVED: 0 }],
+      ["IT", { NOT_STARTED: 0, DRAFT: 0, APPROVED: 0 }],
+    ]);
+  });
+  it("adds up only what belongs to a listed department", () => {
+    expect(counted.total).toEqual({ NOT_STARTED: 1, DRAFT: 1, APPROVED: 2 });
+  });
+  it("gives a share as a whole percentage, and 0 of nothing", () => {
+    expect(percent(1, 3)).toBe(33);
+    expect(percent(2, 3)).toBe(67);
+    expect(percent(0, 0)).toBe(0);
   });
 });

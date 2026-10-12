@@ -357,3 +357,17 @@ export async function keepSettings(keys: string[]) {
     await db.$disconnect();
   }
 }
+
+/**
+ * Test-only clean-up: removes staff a test added (by staff no.), so each run
+ * leaves the headcount as it found it. Their roles and notifications go with
+ * them; audit entries they made stay, without an actor.
+ */
+export async function deleteTestStaff(staffNos: string[]) {
+  const db = new PrismaClient();
+  try {
+    await db.staff.deleteMany({ where: { staffNo: { in: staffNos } } });
+  } finally {
+    await db.$disconnect();
+  }
+}

@@ -1,9 +1,14 @@
 import { expect, test } from "@playwright/test";
 import ExcelJS from "exceljs";
+import { deleteTestStaff } from "./db";
 import { choose, signIn } from "./helpers";
 
-// Uses fresh staff numbers on every run so the demo data is left as it was.
+// Uses fresh staff numbers on every run, and removes those staff afterwards, so the demo data is left as it was.
 const suffix = String(Date.now()).slice(-6);
+
+test.afterAll(async () => {
+  await deleteTestStaff(["E", "C", "X", "N", "K"].map((letter) => `${letter}${suffix}`));
+});
 
 test("admin adds a staff member, marks them resigned and reinstates them", async ({ page }) => {
   const staffNo = `E${suffix}`;

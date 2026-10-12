@@ -1,9 +1,14 @@
 import { expect, test, type Browser, type Page } from "@playwright/test";
+import { deleteTestStaff } from "./db";
 import { choose, signIn } from "./helpers";
 
 // Security regressions found in the phase 1 review. Each test creates its own
-// staff so the demo accounts are left alone.
+// staff so the demo accounts are left alone, and removes them afterwards.
 const suffix = String(Date.now()).slice(-6);
+
+test.afterAll(async () => {
+  await deleteTestStaff(["S", "K"].map((letter) => `${letter}${suffix}`));
+});
 
 async function newSession(browser: Browser) {
   const context = await browser.newContext();

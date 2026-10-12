@@ -53,8 +53,8 @@ export async function GET(request: Request) {
       { figure: "Average total hours", value: perHead(overview.hours, overview.manpower), counts: "Total hours ÷ total manpower" },
       ...TRAINING_TYPES.map((t) => ({
         figure: `Average ${TRAINING_TYPE_LABELS[t]} hours`,
-        value: perHead(overview.hoursByType[t], overview.manpower),
-        counts: "Its total hours ÷ total manpower",
+        value: perHead(overview.hoursByType[t], overview.attended),
+        counts: "Its total hours ÷ the staff who attended training (total participant attend training)",
       })),
     ],
   );

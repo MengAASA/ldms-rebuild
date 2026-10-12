@@ -131,10 +131,11 @@ test("L&D: the Dashboard's figures and charts agree with the reports and with th
   await page.getByRole("link", { name: "Average total hour" }).click();
   await expect(page).toHaveURL(/tab=average/, { timeout: 30_000 });
   await expect(page.getByRole("link", { name: "Average total hour" })).toHaveAttribute("aria-current", "page");
-  // Three averages, all over the same manpower, so public and OJT add up to the total; here it is all public.
+  // The average total is over the manpower; public and OJT are over the staff who attended, as on the old system:
+  // 18 public hours between the 2 who completed it.
   const averageTotal = await figure(page, "Average total hours").innerText();
   expect(averageTotal).toMatch(/^[0-9.]+ h$/);
-  await expect(figure(page, "Average public training hours")).toHaveText(averageTotal);
+  await expect(figure(page, "Average public training hours")).toHaveText("9 h");
   await expect(figure(page, "Average OJT hours")).toHaveText("0 h");
   // Every department's average, then the same division by division.
   const averages = page.getByRole("region", { name: /Average Total Hour.$/ });

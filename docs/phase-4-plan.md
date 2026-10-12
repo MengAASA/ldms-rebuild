@@ -320,8 +320,12 @@ Laid out as the user asked on 9 Oct 2026, after the old system's L&D dashboard.
   - **Average Monthly Total Training Hour**: hours ÷ manpower for each month, Public / In-house and OJT stacked.
   - **One bar chart for each division**, with each of its departments' average; the division's own average
     (its hours ÷ its headcount) is in the card's corner.
-  - Every average divides by **total manpower**, so public and OJT add up to the total. The old system divided
-    its public and OJT averages by the number of people who attended instead, so its three cards didn't add up.
+  - **The divisors follow the old system** (the user's decision, 12 Oct 2026): average total hours is total hours
+    ÷ total manpower; average public and average OJT hours are each ÷ the staff who attended training (*total
+    participant attend training*). So the public and OJT averages don't add up to the average total. The monthly
+    chart and the department and division charts divide by manpower or headcount.
+  - **Trainees aren't counted in total manpower** (the user's decision, 12 Oct 2026), so it is lower than the
+    Staff page's count of active staff by the number of trainees.
 - **Export to Excel**: a sheet for the overview and one per chart, the same numbers (`/dashboard/export`).
 - **How the figures are counted**
   - *Total trainings*: trainings that started in the period and weren't cancelled (for a HOD: those with any of

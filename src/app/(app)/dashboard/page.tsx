@@ -497,11 +497,13 @@ function TotalTab({ data, report }: TabProps) {
 
 function AverageTab({ data, report }: TabProps) {
   const { total, overview, buckets } = data;
-  // Every average divides by the same manpower, so public and OJT add up to the total.
+  // As on the old system: the average total divides by the manpower, but the public and OJT averages divide by
+  // the staff who attended training (public and OJT together), so those two don't add up to the total.
   const manpower = overview.manpower;
   const average = perHead(overview.hours, manpower);
-  const publicAverage = perHead(overview.hoursByType.PUBLIC_INHOUSE, manpower);
-  const ojtAverage = perHead(overview.hoursByType.OJT, manpower);
+  const attended = overview.attended;
+  const publicAverage = perHead(overview.hoursByType.PUBLIC_INHOUSE, attended);
+  const ojtAverage = perHead(overview.hoursByType.OJT, attended);
   const share = (hours: number) => `${overview.hours > 0 ? Math.round((hours / overview.hours) * 100) : 0}%`;
   const publicShare = overview.hours > 0 ? (overview.hoursByType.PUBLIC_INHOUSE / overview.hours) * 100 : 0;
   const months = buckets.map((b, i) => ({
@@ -566,10 +568,20 @@ function AverageTab({ data, report }: TabProps) {
         </dl>
         <dl className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:col-span-7">
           <Tile icon={GraduationCap} tone="jade" label="Average public training hours" value={formatHours(publicAverage)}>
-            <MiniColumns values={months.map((m) => m.values[typeIndex("PUBLIC_INHOUSE")])} buckets={buckets} color={TONE.jade.bar} what="h per person" />
+            <MiniColumns
+              values={data.byType.map((hours) => perHead(hours[typeIndex("PUBLIC_INHOUSE")], attended))}
+              buckets={buckets}
+              color={TONE.jade.bar}
+              what="h per person who attended"
+            />
           </Tile>
           <Tile icon={Wrench} tone="marigold" label="Average OJT hours" value={formatHours(ojtAverage)}>
-            <MiniColumns values={months.map((m) => m.values[typeIndex("OJT")])} buckets={buckets} color={TONE.marigold.bar} what="h per person" />
+            <MiniColumns
+              values={data.byType.map((hours) => perHead(hours[typeIndex("OJT")], attended))}
+              buckets={buckets}
+              color={TONE.marigold.bar}
+              what="h per person who attended"
+            />
           </Tile>
         </dl>
       </section>

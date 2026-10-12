@@ -17,6 +17,9 @@
     "db:sync-pme": "tsx prisma/sync-pme.ts",
     "db:studio": "prisma studio",
     "job:daily": "tsx --env-file=.env --conditions=react-server scripts/daily-job.ts",
+    "import:setup": "node scripts/with-import-db.mjs prisma migrate deploy",
+    "import:old": "tsx --env-file=.env --conditions=react-server scripts/import-old.ts",
+    "dev:live": "node scripts/with-import-db.mjs next dev -p 3006",
     "postinstall": "prisma generate"
   },
   "dependencies": {

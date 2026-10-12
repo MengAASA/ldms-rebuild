@@ -79,6 +79,8 @@ model Section {
   id           Int        @id @default(autoincrement())
   departmentId Int
   name         String     @db.VarChar(120)
+  shortName    String?    @db.VarChar(20) // as on the old system; shown beside the name
+  legacyId     Int?       @unique
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   department   Department @relation(fields: [departmentId], references: [id])

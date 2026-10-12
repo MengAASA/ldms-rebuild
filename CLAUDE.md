@@ -5,7 +5,7 @@
 Rebuild of PHN Industry's Learning and Development Management System, built phase by phase and module by module.
 Stop for the user's review after each module.
 
-- **Status and plan**: `README.md` (phases, security, decisions). Current phase plan: `docs/phase-4-plan.md` (earlier: `docs/phase-3-plan.md`, `docs/phase-2-plan.md`).
+- **Status and plan**: `README.md` (phases, security, decisions). Current phase plan: `docs/phase-5-plan.md` (earlier: `docs/phase-4-plan.md`, `docs/phase-3-plan.md`, `docs/phase-2-plan.md`).
 - **Architecture**: pages/actions → services (`src/server/services`, permission check + audit log in the same
   transaction) → pure rules (`src/server/rules`, unit-tested). Never write through Prisma from a page or action.
 - **Auth**: `requireUser()`/`requirePermission()` in every page and server action; never `redirect()` from a layout.

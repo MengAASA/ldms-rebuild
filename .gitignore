@@ -51,3 +51,6 @@ next-env.d.ts
 
 # uploaded files (certificates): kept on the server, never in git
 /uploads/
+
+# phase 5 import reports: they list rows of the old database by id
+/import-reports/

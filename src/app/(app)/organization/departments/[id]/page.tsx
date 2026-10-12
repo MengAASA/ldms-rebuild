@@ -173,7 +173,8 @@ export default async function DepartmentPage({ params }: PageProps<"/organizatio
             {dept.sections.map((s) => (
               <li key={s.id} className="flex items-center justify-between gap-2 border-b border-rule py-1.5 last:border-b-0">
                 <span className="min-w-0">
-                  {s.name} <span className="num text-xs text-ink-3">· {s._count.staff}</span>
+                  {s.name}
+                  {s.shortName && <span className="text-xs text-ink-3"> ({s.shortName})</span>} <span className="num text-xs text-ink-3">· {s._count.staff}</span>
                 </span>
                 {manage && (
                   <span className="flex shrink-0">

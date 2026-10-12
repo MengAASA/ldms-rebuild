@@ -9,8 +9,8 @@ The plan lives in the **LDMS Rebuild Roadmap** artifact; this repo follows its p
 | 1 | Foundation: org chart, staff, sign-in, permissions, audit log | **Built** |
 | 2 | Training core: trainings, participants, attendance, OJT | **Built** (6 Oct 2026): Trainings, Participants, My Training, OJT for clerks, Certificates, Reports and staff training history; see `docs/phase-2-plan.md`. The 16 course feedback questions were placeholder wording until 12 Oct 2026, when the old system's were put in (phase 4, module 5) |
 | 3 | Workflows: PME, TNA, TNI, skill matrix | **Built** (8 Oct 2026): PME with the Approvals page, skill matrix, TNA (My TNA, by job grade, training options, summary, opening next year early) and TNI; see `docs/phase-3-plan.md` |
-| 4 | Reminder emails, notifications, the daily job, dashboards | **In progress**: plan approved 8 Oct 2026 (`docs/phase-4-plan.md`); module 0 (groundwork: email with its Off / Test / Live mode, the daily job, the Jobs and email screen) built; module 1 (notifications) built; module 2 (reminder emails, with a closing date for TNA and TNI) built; module 3 (the Dashboard: training figures and charts; the Departmental training type removed) built; module 4 (the Dashboard's Progress tab: PME, skill matrix, TNA and TNI by department) built; module 5 (the old audit reports: the real course feedback questions, gender on staff, the old columns in the audit and OJT exports) built |
-| 5 | Migration rehearsal and cutover | |
+| 4 | Reminder emails, notifications, the daily job, dashboards | **Built** (12 Oct 2026): plan approved 8 Oct 2026 (`docs/phase-4-plan.md`); module 0 (groundwork: email with its Off / Test / Live mode, the daily job, the Jobs and email screen) built; module 1 (notifications) built; module 2 (reminder emails, with a closing date for TNA and TNI) built; module 3 (the Dashboard: training figures and charts; the Departmental training type removed) built; module 4 (the Dashboard's Progress tab: PME, skill matrix, TNA and TNI by department) built; module 5 (the old audit reports: the real course feedback questions, gender on staff, the old columns in the audit and OJT exports) built |
+| 5 | Migration rehearsal and cutover | **In progress**: plan approved 12 Oct 2026 (`docs/phase-5-plan.md`); module 0 (the import command `npm run import:old`, its safety checks and report, and the org chart) built |
 
 ## Run it locally
 
@@ -68,6 +68,23 @@ listing everything; `rules/reminder.ts`, `services/reminder.ts`), sends what is 
 than 90 days. L&D choose which kinds of reminder go out, and read the email each person would get, on Jobs and
 email. Running it again the same day is harmless. Each run, and what it did, is listed on Jobs and email; L&D can also
 start one there with **Run now**.
+
+## Importing the old data (phase 5)
+
+The old system's data is brought across by a command that only reads the old database and fills a new, empty one.
+Set `OLD_DATABASE_URL` and `IMPORT_DATABASE_URL` in `.env` (never in code); see `docs/phase-5-plan.md`.
+
+```bash
+npm run import:setup                     # create the database being filled, or bring its tables up to date
+npm run import:old                       # import every part built so far, then compare old with v2
+npm run import:old -- --check            # count and report only: nothing is emptied or written
+npm run dev:live                         # LDMS v2 on the imported data (stop `npm run dev` first)
+```
+
+Each run empties the database it fills and loads it again, so it can be rehearsed as often as needed. It refuses to
+fill the old database or the one the app and the tests use, and it refuses to empty a database people have changed
+records in unless `--discard-changes` is given. Each run writes an Excel report to `import-reports/` (git-ignored):
+old against v2 line by line, and every row that could not come across as it is, with the reason.
 
 ## Checks
 

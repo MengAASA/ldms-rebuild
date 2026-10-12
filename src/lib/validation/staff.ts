@@ -10,6 +10,10 @@ export const DESIGNATION_LABELS: Record<(typeof DESIGNATIONS)[number], string> =
   TRAINEE: "Trainee",
 };
 
+export const GENDERS = ["MALE", "FEMALE"] as const;
+
+export const GENDER_LABELS: Record<(typeof GENDERS)[number], string> = { MALE: "Male", FEMALE: "Female" };
+
 /** Job grades, as on the staff pass: 1 to 5. Used for TNA by job grade. */
 export const JOB_GRADES = [1, 2, 3, 4, 5] as const;
 
@@ -37,6 +41,8 @@ export const staffSchema = z.object({
     .max(120)
     .transform((v) => v || null),
   designation: z.enum(DESIGNATIONS, "Choose a designation"),
+  /** Optional: older records have none. */
+  gender: z.union([z.literal(""), z.enum(GENDERS, "Choose Male or Female")]).transform((v) => v || null),
   departmentId: z.coerce.number({ error: "Choose a department" }).int().positive("Choose a department"),
   sectionId: z
     .union([z.literal(""), z.coerce.number().int().positive()])

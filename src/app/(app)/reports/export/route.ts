@@ -1,8 +1,9 @@
 import ExcelJS from "exceljs";
-import { formatDateRange, nowInMalaysia } from "@/lib/format";
+import { answerCells, CURRENT_FORM, questionsOf } from "@/lib/forms/feedback";
+import { formatDateRange, formatTime, nowInMalaysia } from "@/lib/format";
 import { ATTENDANCE_LABELS } from "@/lib/validation/participant";
-import { DESIGNATION_LABELS } from "@/lib/validation/staff";
-import { TRAINING_TYPE_LABELS } from "@/lib/validation/training";
+import { DESIGNATION_LABELS, GENDER_LABELS } from "@/lib/validation/staff";
+import { TRAINING_PROGRAM_LABELS, TRAINING_TYPE_LABELS } from "@/lib/validation/training";
 import { DATE, HOURS, sheet } from "@/server/excel";
 import { can } from "@/server/permissions";
 import { PME_STAGE_LABELS } from "@/server/rules/pme";
@@ -178,12 +179,13 @@ export async function GET(request: Request) {
     );
   } else if (report === "audit") {
     const { period, rows } = await auditReportForExport(user, f, today);
+    const feedbackQuestions = questionsOf(CURRENT_FORM.FEEDBACK);
     name = "audit report";
     sheet(
       wb,
       "Audit report",
       "Training audit report",
-      `${periodLine(period)}. One line per person per training. Hours: the training's hours when completed (none if cancelled).`,
+      `${periodLine(period)}. One line per person per training. Hours: the training's hours when completed (none if cancelled). The last 16 columns are the course feedback answers (OJT has its own three, in the OJT export).`,
       [
         { header: "No", key: "no", width: 6 },
         { header: "Training Code", key: "code", width: 19 },
@@ -191,11 +193,15 @@ export async function GET(request: Request) {
         { header: "Type", key: "type", width: 18 },
         { header: "Start Date", key: "startDate", width: 12, numFmt: DATE },
         { header: "End Date", key: "endDate", width: 12, numFmt: DATE },
+        { header: "Start Time", key: "startTime", width: 11 },
+        { header: "End Time", key: "endTime", width: 11 },
         { header: "Venue", key: "venue", width: 24 },
+        { header: "Program", key: "program", width: 34 },
         { header: "Trainer", key: "trainer", width: 28 },
         { header: "Training Status", key: "status", width: 15 },
         { header: "Staff No", key: "staffNo", width: 11 },
         { header: "Name", key: "name", width: 34 },
+        { header: "Gender", key: "gender", width: 9 },
         { header: "Designation", key: "designation", width: 15 },
         { header: "Department", key: "department", width: 28 },
         { header: "Attendance", key: "attendance", width: 12 },
@@ -203,6 +209,8 @@ export async function GET(request: Request) {
         { header: "Feedback Given", key: "feedback", width: 15, numFmt: DATE },
         { header: "Hours", key: "hours", width: 8, numFmt: HOURS },
         { header: "Certificate", key: "certificate", width: 12 },
+        // The course feedback questions as the form asks them, one column each, as the old audit report had.
+        ...feedbackQuestions.map((q) => ({ header: q.text, key: q.id, width: 40 })),
       ],
       rows.map((r) => ({
         code: r.training.trainingCode,
@@ -210,11 +218,15 @@ export async function GET(request: Request) {
         type: TRAINING_TYPE_LABELS[r.training.type],
         startDate: r.training.startDate,
         endDate: r.training.endDate,
+        startTime: r.training.sessions.length ? "" : formatTime(r.training.startTime),
+        endTime: r.training.sessions.length ? "" : formatTime(r.training.endTime),
         venue: r.training.venue ?? "",
+        program: r.training.program ? TRAINING_PROGRAM_LABELS[r.training.program] : "",
         trainer: r.training.trainerName ?? "",
         status: TRAINING_PHASE_LABELS[r.training.phase],
         staffNo: r.staff.staffNo,
         name: r.staff.name,
+        gender: r.staff.gender ? GENDER_LABELS[r.staff.gender] : "",
         designation: DESIGNATION_LABELS[r.staff.designation],
         department: r.staff.department.name,
         attendance: ATTENDANCE_LABELS[r.attendance],
@@ -222,6 +234,8 @@ export async function GET(request: Request) {
         feedback: r.submittedAt,
         hours: r.hours,
         certificate: r.certificate ? "Yes" : "No",
+        // An OJT's answers are to a different form: they are in the OJT export.
+        ...(r.training.type === "OJT" ? {} : Object.fromEntries(answerCells("FEEDBACK", r.feedbackVersion, r.feedback).map((cell, n) => [feedbackQuestions[n].id, cell]))),
       })),
     );
   } else {

@@ -12,6 +12,16 @@ export async function signIn(page: Page, staffNo: string, password = DEMO_PASSWO
   await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 }
 
+/**
+ * Fills in the course feedback form's written answers (its last four questions,
+ * all required): `benefit` under "What have you benefited from the course?" and
+ * "None" under the rest.
+ */
+export async function writeFeedbackAnswers(page: Page, benefit: string) {
+  for (const box of await page.locator("textarea").all()) await box.fill("None");
+  await page.getByLabel(/What have you benefited from the course/).fill(benefit);
+}
+
 /** Picks an option in an LDMS <Select>: open it by its label, then click the option. */
 export async function choose(scope: Page | Locator, label: string, option: string | { index: number }) {
   await scope.getByLabel(label, { exact: true }).click();

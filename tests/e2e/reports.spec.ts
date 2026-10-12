@@ -144,6 +144,13 @@ test("L&D: the four reports agree with each other and with their exports", async
   const hours = [5, 6, 7].map((r) => auditSheet.getRow(r).getCell(auditHeader.indexOf("Hours")).value);
   expect(hours.sort()).toEqual([0, 9, 9]);
   expect(auditHeader).toContain("Certificate");
+  // As on the old audit report: gender, times and program, then the 16 course feedback questions, one column each.
+  for (const column of ["Gender", "Start Time", "End Time", "Program"]) expect(auditHeader).toContain(column);
+  const questions = auditHeader.slice(auditHeader.indexOf("Certificate") + 1);
+  expect(questions).toHaveLength(16);
+  expect(questions[0]).toContain("Knowledge / skill presented in the training is suitable for job application");
+  expect(questions[11]).toContain("Would you recommend the course to other employees?");
+  expect(questions[15]).toContain("comments/suggestions for improvement");
 });
 
 test("a staff record shows the person's training history and hours by year", async ({ page }) => {

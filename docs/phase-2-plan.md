@@ -311,8 +311,8 @@ Phase 5 must also map the old values of HRDC, platform, function and program.
   training `FEEDBACK_V1` (16 questions, ids `q1`–`q16` for the phase 5 import), both in `src/lib/forms/feedback.ts`.
   `OJT_V1` is the old system's OJT evaluation (confirmed 1 Oct 2026): *what you have learned* (text), then knowledge /
   skill *before* and *after* training on the old 1–5 rating scale (5 Excellent ≥ 90% … 1 Poor below 50%), with the
-  Malay wording. `FEEDBACK_V1` is still placeholder wording marked `TODO(L&D)` with `draft: true`, which shows a
-  "Draft questions" notice; set `draft: false` once L&D confirms the wording.
+  Malay wording. `FEEDBACK_V1` was placeholder wording until 12 Oct 2026, when the old system's
+  Training Evaluation form was put in word for word (phase 4, module 5).
 - **Rules** (`src/server/rules/myTraining.ts`, tests `tests/rules/myTraining.test.ts`): the form opens on the last day
   while PENDING; sending it sets COMPLETED. Course feedback can't be changed once sent; OJT answers can be updated any
   time. Closed (with the reason shown) when cancelled, absent, not ended yet, or completed by L&D without a form.

@@ -1,7 +1,7 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import ExcelJS from "exceljs";
 import { createTestTraining, deleteTestTraining, giveDemoPassword, makeTestPmes } from "./db";
-import { choose, DEMO_PASSWORD, signIn } from "./helpers";
+import { choose, DEMO_PASSWORD, signIn, writeFeedbackAnswers } from "./helpers";
 
 // PME runs between three people, all in Stamping:
 //   10232 Ahmad Zulkifli bin Rosli, an executive: the one evaluated
@@ -81,7 +81,7 @@ test("a PME goes from completed attendance to verified: evaluate, acknowledge, s
     await staff.waitForLoadState("networkidle");
     for (const radio of await staff.locator('input[type="radio"][value="4"]').all()) await radio.check();
     await staff.locator('input[type="radio"][value="YES"]').check();
-    await staff.getByLabel("What was most useful?").fill("The practical session");
+    await writeFeedbackAnswers(staff, "The practical session");
     await staff.getByRole("button", { name: "Send feedback" }).click();
     await expect(staff.getByRole("status")).toContainText("this training is now completed");
     // The period ended long ago, so it is already with the HOD.

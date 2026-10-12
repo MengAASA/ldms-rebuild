@@ -106,8 +106,14 @@ export async function listOjt(user: SessionUser, f: OjtFilters) {
 
 /** Every row the filters match (not just one page), for the Excel export. */
 export async function listOjtForExport(user: SessionUser, f: OjtFilters) {
-  const rows = await db.participant.findMany({ where: ojtWhere(user, f), orderBy: ojtOrder, take: 20_000, select: ojtRowSelect });
-  return rows.map(withHours);
+  // With each person's answers, which the old OJT audit report listed.
+  const rows = await db.participant.findMany({
+    where: ojtWhere(user, f),
+    orderBy: ojtOrder,
+    take: 20_000,
+    select: { ...ojtRowSelect, staff: { select: { ...ojtRowSelect.staff.select, gender: true } }, feedback: true, feedbackVersion: true },
+  });
+  return rows.map((r) => ({ ...withHours(r), gender: r.staff.gender, feedback: r.feedback, feedbackVersion: r.feedbackVersion }));
 }
 
 export type OjtListRow = Awaited<ReturnType<typeof listOjt>>["rows"][number];

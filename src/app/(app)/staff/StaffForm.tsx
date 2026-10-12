@@ -6,7 +6,7 @@ import { Field, fieldProps, FormMessage, SubmitButton, useFormAction } from "@/c
 import { DateField } from "@/components/ui/DateField";
 import { Select } from "@/components/ui/Select";
 import type { ActionState } from "@/lib/action-state";
-import { DESIGNATION_LABELS, JOB_GRADES } from "@/lib/validation/staff";
+import { DESIGNATION_LABELS, GENDER_LABELS, GENDERS, JOB_GRADES } from "@/lib/validation/staff";
 
 type Department = { id: number; name: string; division: { name: string }; sections: { id: number; name: string }[] };
 
@@ -16,6 +16,7 @@ export type StaffFormValues = {
   email: string;
   position: string;
   designation: string;
+  gender: string;
   departmentId: number | "";
   sectionId: number | "";
   dateJoined: string;
@@ -129,6 +130,14 @@ export function StaffForm({
               placeholder="None"
               disabled={sections.length === 0}
               options={[{ value: "", label: "None" }, ...sections.map((s) => ({ value: String(s.id), label: s.name }))]}
+            />
+          </Field>
+          <Field label="Gender" name="gender" state={state}>
+            <Select
+              {...fieldProps("gender", state)}
+              defaultValue={initial.gender}
+              placeholder="Not recorded"
+              options={[{ value: "", label: "Not recorded" }, ...GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] }))]}
             />
           </Field>
           <Field label="Date joined" name="dateJoined" state={state}>

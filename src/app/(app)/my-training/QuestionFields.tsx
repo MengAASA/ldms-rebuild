@@ -19,7 +19,7 @@ export function QuestionFields({ form, initial, state }: { form: FormDefinition;
           <div>
             <h3 className="ruled-heading">{section.title}</h3>
             {section.intro && <p className="mt-2 text-[13px] text-ink-2">{section.intro}</p>}
-            {section.questions.some(isRating) && <RatingKey />}
+            <ScaleKey questions={section.questions} />
           </div>
           {section.questions.map((q) => (
             <QuestionField key={q.id} n={number.get(q.id)!} q={q} value={initial?.[q.id]} error={errors?.[q.id]?.[0]} />
@@ -30,18 +30,21 @@ export function QuestionFields({ form, initial, state }: { form: FormDefinition;
   );
 }
 
-const isRating = (q: Question) => q.kind === "scale" && q.scale === "rating";
+/** The numbered scale a section's questions use (a rating or a level), if any. */
+const numberedScale = (questions: Question[]) => questions.flatMap((q) => (q.kind === "scale" && q.scale !== "agree" ? [q.scale] : []))[0];
 
-/** The rating scale, explained once for the questions under it, as the old form did. */
-function RatingKey() {
+/** The numbered scale, explained once for the questions under it, as the old forms did. */
+function ScaleKey({ questions }: { questions: Question[] }) {
+  const kind = numberedScale(questions);
+  if (!kind) return null;
   return (
     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg bg-sunken px-4 py-3 text-[12.5px] sm:grid-cols-5">
-      {SCALES.rating.map((s) => (
+      {SCALES[kind].map((s) => (
         <div key={s.value} className="flex items-baseline gap-2">
           <dt className="num w-3 shrink-0 font-semibold text-ink">{s.value}</dt>
           <dd className="min-w-0">
             <span className="font-medium text-ink">{s.label}</span>
-            <span className="block text-[11.5px] text-ink-3">{s.hint}</span>
+            {s.hint && <span className="block text-[11.5px] text-ink-3">{s.hint}</span>}
           </dd>
         </div>
       ))}
@@ -84,8 +87,8 @@ function QuestionField({ n, q, value, error }: { n: number; q: Question; value: 
       </div>
     );
 
-  if (q.kind === "scale" && q.scale === "rating") {
-    const scale = SCALES.rating;
+  if (q.kind === "scale" && q.scale !== "agree") {
+    const scale = SCALES[q.scale];
     return (
       <fieldset aria-invalid={error ? true : undefined} aria-describedby={error ? errorId : undefined}>
         <legend className="mb-2.5">{legend}</legend>
@@ -104,7 +107,7 @@ function QuestionField({ n, q, value, error }: { n: number; q: Question; value: 
                   name={q.id}
                   value={String(s.value)}
                   defaultChecked={checked(String(s.value))}
-                  aria-label={`${s.value}, ${s.label}, ${s.hint}`}
+                  aria-label={[s.value, s.label, s.hint].filter(Boolean).join(", ")}
                   className="absolute inset-0 cursor-pointer opacity-0"
                 />
                 <span aria-hidden className="num text-[16px] font-semibold">

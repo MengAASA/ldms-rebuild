@@ -30,6 +30,7 @@ export default async function NewStaffPage() {
             email: "",
             position: "",
             designation: designations.length === 1 ? designations[0] : "",
+            gender: "",
             departmentId: "",
             sectionId: "",
             dateJoined: "",

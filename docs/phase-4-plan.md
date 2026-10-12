@@ -197,7 +197,7 @@ keeps its own cards; the L&D figures there link to this screen.
 | **2. Reminders** | The twelve kinds, the combined email, how often, the switches, the *Chase from* date, the closing date for TNA and TNI. | In test mode, read the email each demo person would get and compare it with their *Waiting on you*. |
 | **3. Dashboard: training** | The Dashboard screen and the four training charts, with the stacked chart piece. | Compare the totals with the Reports screens for the same year. |
 | **4. Dashboard: workflows** | The four workflow charts and their exports. | Compare a department's counts with its PME, skill matrix and TNA lists. |
-| **5. PDF reports** | The old PME report, training audit report and OJT audit report as PDFs, in the old layouts. Read the old pages first and confirm the layouts with L&D. | Put each beside the old system's PDF for the same training. |
+| **5. The old audit reports** | (Planned as PDFs; they turned out to be Excel downloads. See *Module 5* below.) The real feedback questions, gender on staff, and the old columns in the audit and OJT exports. | Put each beside the old system's PDF for the same training. |
 
 ### Module 0: Groundwork (built 8 Oct 2026, merged)
 
@@ -373,6 +373,34 @@ department its staff member is in now (`progressDashboard` in `services/dashboar
     workflows that would be three more charts for every division.
   - A person with one department sees one column in each chart and no ranking of departments.
 - Fixed with it: the cost chart's year wasn't passed on to the Excel export.
+
+### Module 5: The old audit reports (built 12 Oct 2026, merged)
+
+**The plan was wrong about this module.** It called the old PME report, training audit report and OJT audit report
+"three PDF pages". They are **Excel downloads**; the old system makes no PDFs. Read on 12 Oct 2026:
+`admin/training/public/report_pme.php`, `report_audit.php` and `admin/training/ojt/report_audit_ojt.php`. So this
+module adds what those spreadsheets have and v2's exports lacked, and builds no PDF (agreed with the user).
+
+- **The course feedback form is now the old system's**, word for word, in English and Malay: Section A (8
+  ratings), Section B (3 ratings), Section C (a yes/no and 4 written answers), all 16 required, on the old scale
+  (5 Excellent to 1 Poor). Until now `FEEDBACK_V1` was placeholder wording waiting for L&D; the real questions
+  were in the old attendance page and the audit report's column headings. The ids are still `q1` to `q16`, now
+  with the old kinds, so phase 5 can import the old answers column for column.
+- **Gender on the staff record** (Male, Female, or not recorded): on the staff form and record, in the staff
+  export, and as a **Gender** column in the staff import (a file without the column leaves it as it is).
+- **Reports → Audit report → Export to Excel** gains Gender, Start Time, End Time and Program, and at the end one
+  column for each of the 16 feedback questions, headed with the question as asked. Ratings are their number,
+  yes/no in words. OJT rows leave them blank: OJT has its own three questions.
+- **OJT → Export to Excel** gains Gender and a column for each of the three OJT answers.
+- **The PME report** needed nothing: the PME list's export already has every column of the old one, and more.
+- **Decided while building**
+  - The audit export keeps v2's wider scope (every attendance, not only completed; every training type), with the
+    old columns added, where the old file had completed public trainings only. Filter Attendance to *Completed*
+    and Type to *Public / In-house* in Excel for the old file's rows.
+  - Demo feedback already in a development copy was answered against the placeholder questions; it was answered
+    again in the real form's shape (`prisma/seed.ts` does the same on a seed).
+  - The old training-hours workbook (`report.php`) isn't rebuilt: Reports → Department hours and the Dashboard's
+    export cover it.
 
 ## 8. Data model
 

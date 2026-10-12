@@ -17,6 +17,7 @@ test("admin adds a staff member, marks them resigned and reinstates them", async
   await page.getByLabel("Staff no.").fill(staffNo);
   await page.getByLabel("Full name").fill("Nurul Izzah binti Othman");
   await choose(page, "Designation", "Executive");
+  await choose(page, "Gender", "Female");
   await choose(page, "Department", "Quality Control");
   await choose(page, "Section", "Final Inspection");
   await page.getByRole("button", { name: "Add staff" }).click();
@@ -24,6 +25,7 @@ test("admin adds a staff member, marks them resigned and reinstates them", async
   await expect(page.getByRole("status").filter({ hasText: "Staff record added." })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Nurul Izzah binti Othman" })).toBeVisible();
   await expect(page.getByText("HOD of the department")).toBeVisible();
+  await expect(page.getByText("GenderFemale")).toBeVisible();
 
   await page.getByRole("button", { name: "Mark as resigned" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Mark as resigned" }).click();
@@ -108,6 +110,7 @@ test("job grade, who fills in their own TNA, and the Skill matrix evaluator role
   const header = sheet.getRow(1).values as string[];
   expect(sheet.getRow(2).getCell(header.indexOf("Job Grade")).value).toBe(3);
   expect(sheet.getRow(2).getCell(header.indexOf("Fills Own TNA")).value).toBe("No");
+  expect(header).toContain("Gender");
 
   // An import with the new columns sets them; one in the old layout leaves them as they are.
   const importWith = async (name: string, headings: string[], row: (string | number)[], expected: RegExp) => {
@@ -125,16 +128,19 @@ test("job grade, who fills in their own TNA, and the Skill matrix evaluator role
   };
   const old = ["Staff No", "Name", "Email", "Position", "Designation", "Department", "Section", "Date Joined"];
   const base = [staffNo, "Siti Aminah binti Yusof", "", "Accounts Assistant", "Non-executive", "Finance & Accounts", "", ""];
-  await importWith("new-columns.xlsx", [...old, "Job Grade", "Fills Own TNA"], [...base, 5, "Yes"], /0 added, 1 updated/);
+  await importWith("new-columns.xlsx", [...old, "Job Grade", "Fills Own TNA", "Gender"], [...base, 5, "Yes", "female"], /0 added, 1 updated/);
   await page.goto(`staff?q=${staffNo}`);
   await page.getByRole("link", { name: "Siti Aminah binti Yusof" }).click();
   await expect(employment).toContainText("Job grade5");
+  await expect(employment).toContainText("GenderFemale");
   await expect(employment).toContainText("Fills in their own (set by L&D)");
   await importWith("old-layout.xlsx", old, [...base.slice(0, 3), "Senior Accounts Assistant", ...base.slice(4)], /0 added, 1 updated/);
   await page.goto(`staff?q=${staffNo}`);
   await page.getByRole("link", { name: "Siti Aminah binti Yusof" }).click();
   await expect(employment).toContainText("Senior Accounts Assistant");
   await expect(employment).toContainText("Job grade5");
+  // A file without the Gender column leaves it as it was.
+  await expect(employment).toContainText("GenderFemale");
   await expect(employment).toContainText("Fills in their own (set by L&D)");
 });
 

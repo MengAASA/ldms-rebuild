@@ -1,12 +1,18 @@
 import ExcelJS from "exceljs";
+import { answerCells, CURRENT_FORM, questionsOf } from "@/lib/forms/feedback";
 import { formatTime } from "@/lib/format";
+import { GENDER_LABELS } from "@/lib/validation/staff";
 import { OJT_METHOD_LABELS, OJT_TRAINER_LABELS, ojtTrainerOf } from "@/lib/validation/training";
 import { can } from "@/server/permissions";
 import { listOjtForExport } from "@/server/services/ojt";
 import { getCurrentUser } from "@/server/session";
 import { ojtStatus, parseOjtFilters, SOURCE_LABELS } from "../filters";
 
-/** The OJT list as Excel: every row the page's filters match, with the OJT's full details. */
+/**
+ * The OJT list as Excel: every row the page's filters match, with the OJT's
+ * full details and, as on the old system's OJT audit report, the person's
+ * gender and their three answers.
+ */
 export async function GET(request: Request) {
   const user = await getCurrentUser();
   if (!user) return new Response("Sign in first", { status: 401 });
@@ -16,6 +22,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const rows = await listOjtForExport(user, parseOjtFilters(Object.fromEntries(url.searchParams)));
 
+  const questions = questionsOf(CURRENT_FORM.OJT);
   const wb = new ExcelJS.Workbook();
   wb.creator = "LDMS";
   const ws = wb.addWorksheet("OJT", { views: [{ state: "frozen", ySplit: 1 }] });
@@ -24,6 +31,7 @@ export async function GET(request: Request) {
     { header: "Training Code", key: "code", width: 19 },
     { header: "Staff No", key: "staffNo", width: 11 },
     { header: "Name", key: "name", width: 32 },
+    { header: "Gender", key: "gender", width: 9 },
     { header: "Department", key: "department", width: 28 },
     { header: "Section", key: "section", width: 18 },
     { header: "OJT Title", key: "title", width: 40 },
@@ -39,9 +47,11 @@ export async function GET(request: Request) {
     { header: "Status", key: "status", width: 13 },
     { header: "Answers Given", key: "answered", width: 14, style: { numFmt: "dd/mm/yyyy" } },
     { header: "Recorded By", key: "source", width: 14 },
+    // The questions as the form asks them, one column each.
+    ...questions.map((q) => ({ header: q.text, key: q.id, width: 40 })),
   ];
   ws.getRow(1).font = { bold: true };
-  ws.autoFilter = { from: "A1", to: "S1" };
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } };
   rows.forEach((r, i) => {
     const t = r.training;
     const trainer = ojtTrainerOf(t.program);
@@ -50,6 +60,7 @@ export async function GET(request: Request) {
       code: t.trainingCode,
       staffNo: r.staff.staffNo,
       name: r.staff.name,
+      gender: r.gender ? GENDER_LABELS[r.gender] : "",
       department: r.staff.department.name,
       section: r.staff.section?.name ?? "",
       title: t.title,
@@ -66,6 +77,7 @@ export async function GET(request: Request) {
       status: ojtStatus(r).label,
       answered: r.submittedAt,
       source: SOURCE_LABELS[r.source],
+      ...Object.fromEntries(answerCells("OJT", r.feedbackVersion, r.feedback).map((cell, n) => [questions[n].id, cell])),
     });
   });
 

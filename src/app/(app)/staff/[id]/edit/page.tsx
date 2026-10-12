@@ -41,6 +41,7 @@ export default async function EditStaffPage({ params }: PageProps<"/staff/[id]/e
             email: staff.email ?? "",
             position: staff.position ?? "",
             designation: staff.designation,
+            gender: staff.gender ?? "",
             departmentId: staff.departmentId,
             sectionId: staff.sectionId ?? "",
             dateJoined: toDateInput(staff.dateJoined),

@@ -109,6 +109,13 @@ test("a clerk records one OJT for contract staff, and isn't offered anyone else"
     expect(cell("Hours")).toBe(3.5);
     expect(cell("Status")).toBe("Completed");
     expect(cell("Recorded By")).toBe("Clerk");
+    // As on the old OJT audit report: the person's gender, and a column for each of the three answers.
+    expect(header).toContain("Gender");
+    expect(header.slice(-3)).toEqual([
+      "Please highlight what you have learned from the OJT",
+      "Your knowledge / skill before training (Pengetahuan/kemahiran sebelum training)",
+      "Your knowledge / skill after training (Pengetahuan/kemahiran selepas latihan)",
+    ]);
     expect(String(cell("Training Code"))).toMatch(/^OJT\d{14}$/);
 
     // Clicking anywhere on the row (here, the staff no.) opens the record, once the page is ready.

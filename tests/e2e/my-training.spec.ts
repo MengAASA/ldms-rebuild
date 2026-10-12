@@ -1,6 +1,6 @@
 import { expect, type Page, test } from "@playwright/test";
 import { deleteTestTraining } from "./db";
-import { choose, signIn } from "./helpers";
+import { choose, signIn, writeFeedbackAnswers } from "./helpers";
 
 // Each test creates its own records with a unique title and removes them at
 // the end. A training someone has given feedback on can't be deleted in the
@@ -56,12 +56,13 @@ test("staff find their feedback form, send it, and the training's hours count", 
     // Nothing filled in: every unanswered question is flagged.
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByText("Check the highlighted fields.")).toBeVisible();
-    await expect(page.getByText("Choose an answer")).toHaveCount(14); // 13 scale questions and the yes/no one
+    await expect(page.getByText("Choose an answer")).toHaveCount(12); // 11 ratings and the yes/no one
+    await expect(page.getByText("Write an answer")).toHaveCount(4); // the four written ones
 
-    // Answer everything: "Agree" throughout, "Yes", and a comment.
+    // Answer everything: 4 (Good) throughout, "Yes", and the written answers.
     for (const radio of await page.locator('input[type="radio"][value="4"]').all()) await radio.check();
     await page.locator('input[type="radio"][value="YES"]').check();
-    await page.getByLabel("What was most useful?").fill("The die safety walkthrough");
+    await writeFeedbackAnswers(page, "The die safety walkthrough");
     await page.getByRole("button", { name: "Send feedback" }).click();
     await expect(page.getByRole("status")).toHaveText("Thank you. Your answers have been sent and this training is now completed.");
     await expect(card(page, "Your record").getByText("9 h")).toBeVisible();

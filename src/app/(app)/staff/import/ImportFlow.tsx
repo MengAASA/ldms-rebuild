@@ -88,7 +88,7 @@ export function ImportFlow({ contractOnly }: { contractOnly: boolean }) {
               className="block w-full text-[13px] file:mr-3 file:h-8 file:cursor-pointer file:rounded file:border file:border-rule-strong file:bg-surface file:px-3 file:text-[13px] file:font-medium hover:file:bg-sunken"
             />
             <p className="hint mt-2">
-              First sheet, headings in row 1: Staff No, Name, Email, Position, Designation, Department, Section, Date Joined, Job Grade, Fills Own TNA.{" "}
+              First sheet, headings in row 1: Staff No, Name, Email, Position, Designation, Department, Section, Date Joined, Job Grade, Fills Own TNA, Gender.{" "}
               <a href={withBasePath("/staff/import/template")} className="link" download>
                 Download the template
               </a>

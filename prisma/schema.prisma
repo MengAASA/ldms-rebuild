@@ -87,6 +87,11 @@ model Section {
   @@unique([departmentId, name])
 }
 
+enum Gender {
+  MALE
+  FEMALE
+}
+
 model Staff {
   id                 Int               @id @default(autoincrement())
   staffNo            String            @unique @db.VarChar(20) // the old table allowed duplicates
@@ -94,6 +99,7 @@ model Staff {
   email              String?           @db.VarChar(160)
   position           String?           @db.VarChar(120)
   designation        Designation
+  gender             Gender? // as on the old system's staff record; the audit reports list it
   status             StaffStatus       @default(ACTIVE)
   dateJoined         DateTime?         @db.Date
   dateResigned       DateTime?         @db.Date

@@ -142,8 +142,10 @@ async function main() {
 // answers (as the participant seed made them before My Training existed) get
 // a plausible set, so a submitted form can be seen. So do seeded OJT answers
 // in the draft shape used before the old OJT form's wording was confirmed on
-// 1 Oct 2026 (a written a2 instead of a rating). Rows with answers in the
-// current shape are left alone, so this can run on every seed.
+// 1 Oct 2026 (a written a2 instead of a rating), and course answers to the
+// placeholder questions used before the real form was taken from the old
+// system on 12 Oct 2026. Rows with answers in the current shape are left
+// alone, so this can run on every seed.
 async function answerDemoFeedback() {
   seed = 20261001;
   const submitted = await db.participant.findMany({
@@ -152,11 +154,15 @@ async function answerDemoFeedback() {
   });
   const rows = submitted.filter((r) => {
     if (r.feedback === null) return true;
-    const a2 = (r.feedback as Record<string, unknown>).a2;
-    return r.training.type === "OJT" && typeof a2 !== "number";
+    const given = r.feedback as Record<string, unknown>;
+    if (r.training.type === "OJT") return typeof given.a2 !== "number";
+    // Answers to the placeholder course questions used until 12 Oct 2026: a rating where the real form has yes/no.
+    return typeof given.q12 === "number";
   });
-  const COMMENTS = ["The hands-on part", "Real examples from our line", "Clear checklists to take back", null];
-  const IMPROVE = ["More time for practice", "Smaller groups", null, null];
+  const BENEFIT = ["The hands-on part", "Real examples from our line", "Clear checklists to take back"];
+  const SHORT = ["Apply the checklist on my line this month", "Brief my team on what I learned", "Update our work instruction"];
+  const LONG = ["Train a second person in the section", "Reduce rework on our line", "Take the next level of this course"];
+  const SUGGEST = ["More time for practice", "Smaller groups", "None"];
   const LEARNED = ["The steps and the safety checks for the task", "Setting the machine up on my own", "Reading the work instruction and checking the first piece"];
   for (const r of rows) {
     const score = () => 3 + Math.floor(rand() * 3); // 3–5
@@ -165,10 +171,12 @@ async function answerDemoFeedback() {
       r.training.type === "OJT"
         ? { a1: pick(LEARNED), a2: before, a3: Math.min(5, before + 1 + Math.floor(rand() * 2)) }
         : {
-            ...Object.fromEntries(Array.from({ length: 13 }, (_, i) => [`q${i + 1}`, score()])),
-            q14: rand() < 0.85 ? "YES" : "NO",
-            q15: pick(COMMENTS),
-            q16: pick(IMPROVE),
+            ...Object.fromEntries(Array.from({ length: 11 }, (_, i) => [`q${i + 1}`, score()])),
+            q12: rand() < 0.85 ? "YES" : "NO",
+            q13: pick(BENEFIT),
+            q14: pick(SHORT),
+            q15: pick(LONG),
+            q16: pick(SUGGEST),
           };
     await db.participant.update({ where: { id: r.id }, data: { feedback: answers, feedbackVersion: 1 } });
   }

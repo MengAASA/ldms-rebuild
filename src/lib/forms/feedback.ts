@@ -8,13 +8,17 @@ import { z } from "zod";
 // Which form a training uses: OJT has its own short form (OJT_V1), every other
 // training the course feedback form (FEEDBACK_V1).
 //
-// OJT_V1 is the old system's OJT evaluation, word for word (confirmed 1 Oct 2026).
-// TODO(L&D): FEEDBACK_V1's wording is still a placeholder (phase 2 plan,
-// question 1). Replace it with the old system's questions, then set
-// `draft: false`. Keep the ids: the old q1–q16 columns import into q1–q16.
+// Both forms are the old system's, word for word: OJT_V1 its OJT evaluation
+// (confirmed 1 Oct 2026) and FEEDBACK_V1 its Training Evaluation form, in
+// English and Malay (taken from the old attendance page on 12 Oct 2026; until
+// then it was placeholder wording). The ids are the old columns: q1–q16.
 
-/** The two 1–5 scales: agreement with a statement, and a rating of a level. */
-export type ScaleKind = "agree" | "rating";
+/**
+ * The 1–5 scales: agreement with a statement; a rating of a level against
+ * percentages (the OJT form); and the same five levels without percentages
+ * (the course feedback form).
+ */
+export type ScaleKind = "agree" | "rating" | "level";
 
 export type Question =
   | { id: string; kind: "scale"; scale: ScaleKind; text: string; required: boolean }
@@ -46,6 +50,14 @@ export const SCALES: Record<ScaleKind, readonly { value: number; label: string; 
     { value: 4, label: "Good", hint: "80–89%" },
     { value: 5, label: "Excellent", hint: "90% and above" },
   ],
+  // The old course feedback form's scale: 5 Excellent, 4 Good, 3 Average, 2 Fair, 1 Poor.
+  level: [
+    { value: 1, label: "Poor" },
+    { value: 2, label: "Fair" },
+    { value: 3, label: "Average" },
+    { value: 4, label: "Good" },
+    { value: 5, label: "Excellent" },
+  ],
 };
 
 export const YES_NO = [
@@ -58,47 +70,86 @@ export const MAX_ANSWER = 1000;
 
 const scale = (id: string, text: string, kind: ScaleKind = "agree"): Question => ({ id, kind: "scale", scale: kind, text, required: true });
 
-/** Course feedback: 16 questions, filled in from the training's last day. */
+/**
+ * Course feedback: the old system's Training Evaluation form, 16 questions in
+ * three sections, every one required. Filled in from the training's last day.
+ */
 export const FEEDBACK_V1: FormDefinition = {
   version: 1,
-  draft: true,
+  draft: false,
   sections: [
     {
-      title: "The course",
+      title: "Section A: Training content & quality of training",
+      intro: "Please assess the training program using the scale below.",
       questions: [
-        scale("q1", "The objectives of the training were explained clearly."),
-        scale("q2", "The content was relevant to my job."),
-        scale("q3", "The material was well organised and easy to follow."),
-        scale("q4", "The length of the training was right for the content."),
+        scale(
+          "q1",
+          "Knowledge / skill presented in the training is suitable for job application (Pengetahuan/kemahiran yang disampaikan dalam kursus ini sesuai diaplikasikan di tempat kerja)",
+          "level",
+        ),
+        scale(
+          "q2",
+          "The objective of this course is clearly stated in the beginning of the course (Tujuan kursus ini dinyatakan dengan jelas pada permulaan kursus)",
+          "level",
+        ),
+        scale("q3", "Training content provided is complete and suitable (Bahan latihan yang digunakan adalah lengkap dan bersesuaian)", "level"),
+        scale(
+          "q4",
+          "Activities carried out such as case study, simulation and group discussion is suitable and effective (Aktiviti yang dijalankan seperti kajian kes, simulasi dan perbincangan kumpulan adalah sesuai dan berkesan)",
+          "level",
+        ),
+        scale("q5", "Training duration is sufficient (Jangkamasa kursus adalah sesuai)", "level"),
+        scale(
+          "q6",
+          "Quality and cleanliness of food preparation throughout the course (Kualiti dan kebersihan makanan yang disediakan sepanjang kursus adalah baik)",
+          "level",
+        ),
+        scale("q7", "Complete training facilities (Kemudahan kursus adalah lengkap)", "level"),
+        scale("q8", "Overall evaluation (Penilaian secara keseluruhan)", "level"),
       ],
     },
     {
-      title: "The trainer",
+      title: "Section B: Facilitator / trainer",
+      intro: "Please assess the training facilitator/trainer using the scale below.",
       questions: [
-        scale("q5", "The trainer knew the subject well."),
-        scale("q6", "The trainer explained things clearly."),
-        scale("q7", "The trainer encouraged questions and took part with us."),
-        scale("q8", "The trainer kept to the schedule."),
+        scale("q9", "Knowledge on the subject (Pengetahuan berkaitan tajuk kursus)", "level"),
+        scale("q10", "Methods and manner of presentation (Cara dan gaya penyampaian)", "level"),
+        scale("q11", "Overall evaluation (Penilaian secara keseluruhan)", "level"),
       ],
     },
     {
-      title: "Arrangements",
-      questions: [scale("q9", "The venue or online platform was suitable."), scale("q10", "The training materials and equipment were adequate.")],
-    },
-    {
-      title: "What you got out of it",
+      title: "Section C: Recommendation & suggestion",
       questions: [
-        scale("q11", "I gained new knowledge or skills."),
-        scale("q12", "I can apply what I learned in my job."),
-        scale("q13", "Overall, I am satisfied with this training."),
-        { id: "q14", kind: "yesno", text: "Would you recommend this training to colleagues?", required: true },
-      ],
-    },
-    {
-      title: "Comments",
-      questions: [
-        { id: "q15", kind: "text", text: "What was most useful?", required: false },
-        { id: "q16", kind: "text", text: "How could the training be improved?", required: false },
+        {
+          id: "q12",
+          kind: "yesno",
+          text: "Would you recommend the course to other employees? (Adakah anda akan mensyorkan kursus ini kepada pekerja lain?)",
+          required: true,
+        },
+        {
+          id: "q13",
+          kind: "text",
+          text: "What have you benefited from the course? (Apakah faedah-faedah yang telah anda perolehi daripada kursus ini?)",
+          required: true,
+        },
+        {
+          id: "q14",
+          kind: "text",
+          text: "What is your plan for improvement based on the knowledge gained from this course? (Short term - within 6 months) Apakah perancangan anda untuk pembaikan berdasarkan pengetahuan diperolehi dari kursus ini? (Jangkamasa pendek - dalam tempoh 6 bulan)",
+          required: true,
+        },
+        {
+          id: "q15",
+          kind: "text",
+          text: "What is your plan for improvement based on the knowledge gained from this course? (Long term - within more than 1 year) Apakah perancangan anda untuk pembaikan berdasarkan pengetahuan diperolehi dari kursus ini? (Jangkamasa panjang - dalam tempoh lebih 1 tahun)",
+          required: true,
+        },
+        {
+          id: "q16",
+          kind: "text",
+          text: "Please write your comments/suggestions for improvement, problem encountered and other recommendations regarding the course (Sila nyatakan cadangan-cadangan untuk kemajuan, masalah-masalah yang timbul dan lain-lain cadangan berkenaan kursus tersebut)",
+          required: true,
+        },
       ],
     },
   ],
@@ -172,9 +223,24 @@ export function answerLabel(q: Question, value: Answers[string] | undefined): st
   if (value === null || value === undefined || value === "") return null;
   if (q.kind === "scale") {
     const s = SCALES[q.scale].find((s) => s.value === value);
-    // A rating reads with its number, as on the old form: "4 · Good".
-    return s ? (q.scale === "rating" ? `${s.value} · ${s.label}` : s.label) : String(value);
+    // A rating or level reads with its number, as on the old forms: "4 · Good".
+    return s ? (q.scale === "agree" ? s.label : `${s.value} · ${s.label}`) : String(value);
   }
   if (q.kind === "yesno") return YES_NO.find((s) => s.value === value)?.label ?? String(value);
   return String(value);
+}
+
+/**
+ * A stored set of answers as spreadsheet cells: one for each question of the
+ * kind's current form, in order. Ratings are their number and yes/no is in
+ * words, as the old system's audit reports had them. Blank where nothing was
+ * given, or the answers were given on a version this code doesn't know.
+ */
+export function answerCells(kind: FormKind, version: number | null | undefined, answers: unknown): (number | string)[] {
+  const given = formVersion(kind, version) && answers && typeof answers === "object" ? (answers as Answers) : null;
+  return questionsOf(CURRENT_FORM[kind]).map((q) => {
+    const value = given?.[q.id];
+    if (value === null || value === undefined) return "";
+    return q.kind === "yesno" ? (answerLabel(q, value) ?? "") : value;
+  });
 }

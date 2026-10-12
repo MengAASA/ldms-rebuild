@@ -7,13 +7,13 @@ import { DESIGNATION_LABELS, DESIGNATIONS, staffSchema, type StaffInput } from "
 import { diffFields, recordAudit } from "./audit";
 import { ensure } from "./org";
 
-export const IMPORT_COLUMNS = ["Staff No", "Name", "Email", "Position", "Designation", "Department", "Section", "Date Joined", "Job Grade", "Fills Own TNA"] as const;
+export const IMPORT_COLUMNS = ["Staff No", "Name", "Email", "Position", "Designation", "Department", "Section", "Date Joined", "Job Grade", "Fills Own TNA", "Gender"] as const;
 /**
- * Added in phase 3. A file without one of these columns (an older template)
+ * Added after phase 1. A file without one of these columns (an older template)
  * leaves that value as it is on existing records, where a blank cell under any
  * other heading clears it.
  */
-const KEEP_WHEN_ABSENT = { jobGrade: "Job Grade", fillsOwnTna: "Fills Own TNA" } as const;
+const KEEP_WHEN_ABSENT = { jobGrade: "Job Grade", fillsOwnTna: "Fills Own TNA", gender: "Gender" } as const;
 const REQUIRED = ["Staff No", "Name", "Designation", "Department"];
 const MAX_ROWS = 2000;
 
@@ -66,7 +66,15 @@ function matchDesignation(s: string): string {
   return s;
 }
 
-type Parsed = { row: number; input?: StaffInput; raw: Record<string, string>; errors: string[]; has: { jobGrade: boolean; fillsOwnTna: boolean } };
+type Parsed = { row: number; input?: StaffInput; raw: Record<string, string>; errors: string[]; has: { jobGrade: boolean; fillsOwnTna: boolean; gender: boolean } };
+
+/** "Male" / "Female" (or M, F, Lelaki, Perempuan) as the stored value; blank stays blank; anything else is returned as typed, for the error. */
+function matchGender(s: string): string {
+  const v = s.trim().toLowerCase();
+  if (["male", "m", "lelaki"].includes(v)) return "MALE";
+  if (["female", "f", "perempuan"].includes(v)) return "FEMALE";
+  return s.trim();
+}
 
 /** "Yes" / "No" (or Y, N, true, false, 1, 0); blank is No. Null when it is something else. */
 function yesNo(s: string): boolean | null {
@@ -98,7 +106,9 @@ async function parseWorkbook(buffer: ArrayBuffer): Promise<Parsed[]> {
     if (d.shortName) deptByKey.set(d.shortName.toLowerCase(), d);
   }
 
-  const has = { jobGrade: header.has(KEEP_WHEN_ABSENT.jobGrade.toLowerCase()), fillsOwnTna: header.has(KEEP_WHEN_ABSENT.fillsOwnTna.toLowerCase()) };
+  const has = { jobGrade: header.has(KEEP_WHEN_ABSENT.jobGrade.toLowerCase()), fillsOwnTna: header.has(KEEP_WHEN_ABSENT.fillsOwnTna.toLowerCase()),
+    gender: header.has(KEEP_WHEN_ABSENT.gender.toLowerCase()),
+  };
   const parsed: Parsed[] = [];
   const seen = new Map<string, number>();
   sheet.eachRow((r, rowNumber) => {
@@ -130,6 +140,7 @@ async function parseWorkbook(buffer: ArrayBuffer): Promise<Parsed[]> {
       email: raw["Email"],
       position: raw["Position"],
       designation: matchDesignation(raw["Designation"]),
+      gender: matchGender(raw["Gender"]),
       departmentId: dept ? String(dept.id) : "",
       sectionId,
       dateJoined: date ?? "",
@@ -141,7 +152,7 @@ async function parseWorkbook(buffer: ArrayBuffer): Promise<Parsed[]> {
         const field = String(issue.path[0]);
         if (field === "departmentId" && raw["Department"]) continue; // already reported above
         if (field === "dateJoined") continue; // reported above with the value typed
-        const label = { staffNo: "Staff No", name: "Name", email: "Email", designation: "Designation", departmentId: "Department", position: "Position", jobGrade: "Job Grade" }[field] ?? field;
+        const label = { staffNo: "Staff No", name: "Name", email: "Email", designation: "Designation", departmentId: "Department", position: "Position", jobGrade: "Job Grade", gender: "Gender" }[field] ?? field;
         errors.push(`${label}: ${field === "designation" ? `"${raw["Designation"]}" is not one of ${Object.values(DESIGNATION_LABELS).join(", ")}` : issue.message}`);
       }
     }
@@ -166,9 +177,10 @@ const FIELD_LABELS: Record<string, string> = {
   dateJoined: "date joined",
   jobGrade: "job grade",
   fillsOwnTna: "fills own TNA",
+  gender: "gender",
 };
 
-const IMPORT_FIELDS: (keyof StaffInput & string)[] = ["name", "email", "position", "designation", "departmentId", "sectionId", "dateJoined", "jobGrade", "fillsOwnTna"];
+const IMPORT_FIELDS: (keyof StaffInput & string)[] = ["name", "email", "position", "designation", "departmentId", "sectionId", "dateJoined", "jobGrade", "fillsOwnTna", "gender"];
 
 async function plan(user: SessionUser, buffer: ArrayBuffer) {
   const parsed = await parseWorkbook(buffer);
@@ -186,6 +198,7 @@ async function plan(user: SessionUser, buffer: ArrayBuffer) {
     const input = raw.input && {
       ...raw.input,
       jobGrade: raw.has.jobGrade ? raw.input.jobGrade : (current?.jobGrade ?? null),
+      gender: raw.has.gender ? raw.input.gender : (current?.gender ?? null),
       fillsOwnTna: raw.has.fillsOwnTna && isAdmin(user) ? raw.input.fillsOwnTna : (current?.fillsOwnTna ?? false),
     };
     const p = { ...raw, input };
@@ -271,7 +284,7 @@ export async function buildImportTemplate(): Promise<Buffer> {
   const ws = wb.addWorksheet("Staff");
   ws.columns = IMPORT_COLUMNS.map((header) => ({ header, width: header === "Name" || header === "Department" ? 34 : 18 }));
   ws.getRow(1).font = { bold: true };
-  ws.addRow(["C2101", "Aung Ko Ko", "", "Production Operator", "Contract", "Stamping", "Press Line A", "01/10/2026", 1, "No"]);
+  ws.addRow(["C2101", "Aung Ko Ko", "", "Production Operator", "Contract", "Stamping", "Press Line A", "01/10/2026", 1, "No", "Male"]);
   const ref = wb.addWorksheet("Departments");
   ref.columns = [
     { header: "Department", width: 36 },
@@ -291,7 +304,8 @@ export async function buildImportTemplate(): Promise<Buffer> {
     "Job Grade: 1 to 5, or blank for none. Staff who don't fill in their own TNA are covered by their grade's.",
     "Fills Own TNA: Yes or No (blank is No). For office staff who aren't executives; executives and managers always do. Only the L&D unit can change it.",
     "A Staff No that already exists updates that record. Blank optional cells clear the value.",
-    "A file without the Job Grade or Fills Own TNA column leaves those as they are.",
+    "Gender: Male or Female, or blank when not recorded.",
+    "A file without the Job Grade, Fills Own TNA or Gender column leaves those as they are.",
   ].forEach((line) => notes.addRow([line]));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

@@ -274,8 +274,11 @@ const auditSelect = {
   attendance: true,
   attendanceReason: true,
   submittedAt: true,
-  staff: { select: { id: true, staffNo: true, name: true, designation: true, department: { select: { name: true } } } },
-  training: { select: { id: true, trainingCode: true, title: true, type: true, venue: true, trainerName: true, certificateFile: true, ...hoursSelect } },
+  // The answers and the gender are for the export: the old audit reports listed them.
+  feedback: true,
+  feedbackVersion: true,
+  staff: { select: { id: true, staffNo: true, name: true, gender: true, designation: true, department: { select: { name: true } } } },
+  training: { select: { id: true, trainingCode: true, title: true, type: true, venue: true, program: true, trainerName: true, certificateFile: true, ...hoursSelect } },
 } satisfies Prisma.ParticipantSelect;
 
 function auditRow(p: Prisma.ParticipantGetPayload<{ select: typeof auditSelect }>, today: Date) {

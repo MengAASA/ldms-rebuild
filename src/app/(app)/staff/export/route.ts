@@ -1,5 +1,5 @@
 import ExcelJS from "exceljs";
-import { DESIGNATION_LABELS } from "@/lib/validation/staff";
+import { DESIGNATION_LABELS, GENDER_LABELS } from "@/lib/validation/staff";
 import { can } from "@/server/permissions";
 import { listStaffForExport } from "@/server/services/staff";
 import { getCurrentUser } from "@/server/session";
@@ -24,6 +24,7 @@ export async function GET(request: Request) {
     { header: "Email", key: "email", width: 32 },
     { header: "Position", key: "position", width: 30 },
     { header: "Designation", key: "designation", width: 16 },
+    { header: "Gender", key: "gender", width: 10 },
     { header: "Job Grade", key: "jobGrade", width: 10 },
     { header: "Fills Own TNA", key: "fillsOwnTna", width: 14 },
     { header: "Division", key: "division", width: 22 },
@@ -34,7 +35,7 @@ export async function GET(request: Request) {
     { header: "Date Resigned", key: "dateResigned", width: 14, style: { numFmt: "dd/mm/yyyy" } },
   ];
   ws.getRow(1).font = { bold: true };
-  ws.autoFilter = { from: "A1", to: "M1" };
+  ws.autoFilter = { from: "A1", to: "N1" };
   for (const s of rows) {
     ws.addRow({
       staffNo: s.staffNo,
@@ -42,6 +43,7 @@ export async function GET(request: Request) {
       email: s.email ?? "",
       position: s.position ?? "",
       designation: DESIGNATION_LABELS[s.designation],
+      gender: s.gender ? GENDER_LABELS[s.gender] : "",
       jobGrade: s.jobGrade,
       fillsOwnTna: s.fillsOwnTna ? "Yes" : "No",
       division: s.department.division.name,

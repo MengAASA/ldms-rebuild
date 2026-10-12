@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Attendance } from "@prisma/client";
-import { answerLabel, answersSchema, CURRENT_FORM, FEEDBACK_V1, formVersion, OJT_V1, questionsOf } from "@/lib/forms/feedback";
+import { answerLabel, answersSchema, CURRENT_FORM, FEEDBACK_V1, formVersion, OJT_V1, questionsOf, answerCells } from "@/lib/forms/feedback";
 import { ojtSchema } from "@/lib/validation/myTraining";
 import { feedbackDue, formAccess, formKind, ojtDateBlock, ojtDeleteBlock, ojtDetailsBlock } from "@/server/rules/myTraining";
 
@@ -89,6 +89,27 @@ describe("feedback form (FEEDBACK_V1)", () => {
     questionsOf(FEEDBACK_V1).map((q) => [q.id, q.kind === "scale" ? "4" : q.kind === "yesno" ? "YES" : "Good examples"]),
   ) as Record<string, string>;
 
+  it("is the old system's form: 11 ratings, a yes/no, then 4 written answers, in English and Malay", () => {
+    expect(FEEDBACK_V1.draft).toBe(false);
+    expect(questionsOf(FEEDBACK_V1).map((q) => q.kind)).toEqual([...Array(11).fill("scale"), "yesno", ...Array(4).fill("text")]);
+    expect(questionsOf(FEEDBACK_V1).every((q) => q.required)).toBe(true);
+    expect(FEEDBACK_V1.sections.map((s) => s.questions.length)).toEqual([8, 3, 5]);
+    expect(questionsOf(FEEDBACK_V1)[0].text).toContain("Pengetahuan/kemahiran");
+  });
+
+  it("gives its answers as spreadsheet cells in question order: ratings as numbers, yes/no in words", () => {
+    const stored = answersSchema(FEEDBACK_V1).parse(filled);
+    const cells = answerCells("FEEDBACK", 1, stored);
+    expect(cells).toHaveLength(16);
+    expect(cells.slice(0, 11)).toEqual(Array(11).fill(4));
+    expect(cells[11]).toBe("Yes");
+    expect(cells[12]).toBe("Good examples");
+    // Nothing given, or a version this code doesn't know: every cell blank.
+    expect(answerCells("FEEDBACK", null, null)).toEqual(Array(16).fill(""));
+    expect(answerCells("FEEDBACK", 99, stored)).toEqual(Array(16).fill(""));
+    expect(answerCells("OJT", 1, { a1: "The steps", a2: 2, a3: 4 })).toEqual(["The steps", 2, 4]);
+  });
+
   it("has the 16 questions the old system stored as q1–q16", () => {
     expect(questionsOf(FEEDBACK_V1).map((q) => q.id)).toEqual(Array.from({ length: 16 }, (_, i) => `q${i + 1}`));
   });
@@ -103,32 +124,32 @@ describe("feedback form (FEEDBACK_V1)", () => {
   it("stores scale answers as numbers and yes/no as YES or NO", () => {
     const r = answersSchema(FEEDBACK_V1).safeParse(filled);
     expect(r.success).toBe(true);
-    expect(r.data).toMatchObject({ q1: 4, q13: 4, q14: "YES", q15: "Good examples" });
+    expect(r.data).toMatchObject({ q1: 4, q11: 4, q12: "YES", q13: "Good examples", q16: "Good examples" });
   });
 
-  it("requires every scale and yes/no answer, and flags each one missing", () => {
-    const r = answersSchema(FEEDBACK_V1).safeParse({ ...filled, q3: "", q14: "" });
+  it("requires every answer, written ones too, and flags each one missing", () => {
+    const r = answersSchema(FEEDBACK_V1).safeParse({ ...filled, q3: "", q12: "", q14: "  " });
     expect(r.success).toBe(false);
     const paths = r.error!.issues.map((i) => i.path[0]);
-    expect(paths).toEqual(expect.arrayContaining(["q3", "q14"]));
+    expect(paths).toEqual(expect.arrayContaining(["q3", "q12", "q14"]));
+    expect(paths).toHaveLength(3);
   });
 
   it("refuses out-of-range and unknown answers", () => {
     expect(answersSchema(FEEDBACK_V1).safeParse({ ...filled, q1: "6" }).success).toBe(false);
     expect(answersSchema(FEEDBACK_V1).safeParse({ ...filled, q1: "0" }).success).toBe(false);
-    expect(answersSchema(FEEDBACK_V1).safeParse({ ...filled, q14: "MAYBE" }).success).toBe(false);
+    expect(answersSchema(FEEDBACK_V1).safeParse({ ...filled, q12: "MAYBE" }).success).toBe(false);
   });
 
-  it("written answers are optional (blank becomes null) and limited in length", () => {
-    const r = answersSchema(FEEDBACK_V1).safeParse({ ...filled, q15: "  ", q16: "" });
-    expect(r.data).toMatchObject({ q15: null, q16: null });
+  it("trims written answers and limits their length", () => {
+    expect(answersSchema(FEEDBACK_V1).safeParse({ ...filled, q16: "  More practice  " }).data).toMatchObject({ q16: "More practice" });
     expect(answersSchema(FEEDBACK_V1).safeParse({ ...filled, q16: "x".repeat(1001) }).success).toBe(false);
   });
 
   it("reads answers back in words", () => {
     const [q1] = questionsOf(FEEDBACK_V1);
-    expect(answerLabel(q1, 5)).toBe("Strongly agree");
-    expect(answerLabel(questionsOf(FEEDBACK_V1)[13], "NO")).toBe("No");
+    expect(answerLabel(q1, 5)).toBe("5 · Excellent");
+    expect(answerLabel(questionsOf(FEEDBACK_V1)[11], "NO")).toBe("No");
     expect(answerLabel(q1, null)).toBeNull();
   });
 });

@@ -4,7 +4,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { toDateInput } from "@/lib/format";
 import { canManageStaffRecord, isAdmin, manageableDesignations } from "@/server/permissions";
 import { departmentOptions } from "@/server/services/org";
-import { getStaffRecord } from "@/server/services/staff";
+import { getStaffRecord, plantOptions } from "@/server/services/staff";
 import { requirePermission } from "@/server/session";
 import { updateStaffAction } from "../../actions";
 import { StaffForm } from "../../StaffForm";
@@ -31,6 +31,7 @@ export default async function EditStaffPage({ params }: PageProps<"/staff/[id]/e
         <StaffForm
           action={updateStaffAction.bind(null, id)}
           departments={await departmentOptions()}
+          plants={await plantOptions()}
           designations={manageableDesignations(user)}
           submitLabel="Save changes"
           cancelHref={`/staff/${id}`}
@@ -42,6 +43,7 @@ export default async function EditStaffPage({ params }: PageProps<"/staff/[id]/e
             position: staff.position ?? "",
             designation: staff.designation,
             gender: staff.gender ?? "",
+            plant: staff.plant ?? "",
             departmentId: staff.departmentId,
             sectionId: staff.sectionId ?? "",
             dateJoined: toDateInput(staff.dateJoined),

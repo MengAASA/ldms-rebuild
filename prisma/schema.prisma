@@ -102,6 +102,7 @@ model Staff {
   position           String?           @db.VarChar(120)
   designation        Designation
   gender             Gender? // as on the old system's staff record; the audit reports list it
+  plant              String?           @db.VarChar(60) // where they work, as on the old system's staff record
   status             StaffStatus       @default(ACTIVE)
   dateJoined         DateTime?         @db.Date
   dateResigned       DateTime?         @db.Date

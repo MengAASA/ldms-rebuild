@@ -249,6 +249,31 @@ Modules 0 and 1 are small and could be reviewed together.
   is the app's, an address missing, records changed by people), a second run giving the same result, and the demo
   database untouched.
 
+### Module 1: Staff (built 12 Oct 2026)
+
+- **The staff part** (`src/server/import/staff.ts`): all 6,003 old staff records come across, 3,087 active and 2,916
+  resigned, with designation, gender, plant, join date, job grade, email and their department and section.
+  Every count in the comparison matches the old system, including the number of staff in each of the 42 departments.
+- **Roles**: 6 L&D admins, 62 main clerks and 146 skill matrix evaluators, active staff only. 40 departments have
+  their HOD and 6 divisions their head. 62 non-executives are marked as filling in their own TNA.
+- **The holding department**, "No department (old system)" under "No division (old system)", has 244 people: 102
+  with no department and 142 from the department marked (DELETED). 243 are resigned; **one is active and needs a real
+  department**.
+- **Old passwords**: carried for the 3,087 active staff only. **2,938 of them share one password** (the one they
+  were given), so anyone whose old password is one that others have too (2,945 people) must choose a new one the
+  first time they sign in. The 142 with a password of their own are not asked. `mustChangeOldPassword` is the rule.
+- **Data model**: `Staff.plant` (decision 14). It is on the staff form (with the plants already in use offered as
+  suggestions), the staff record and its history, the staff export, and the Excel staff import as an optional
+  "Plant" column.
+- **A part can now be run on its own**: `npm run import:old -- --only staff` empties and reloads staff and what
+  depends on them, and leaves the org chart alone.
+- **Listed in the import report for HR**: the 1,184 with a blank status (imported as active), 34 staff numbers with a
+  space or symbol in them (imported as they are, since people sign in with them, but the staff form would refuse
+  them), 16 resigned people whose roles were not carried, 7 marked HOD who head no department, and one person whose
+  section belongs to another department.
+- **Tests**: 18 more unit tests in `tests/rules/import.test.ts`; `staff-changes.spec.ts` covers Plant on the form,
+  the record, the export and the Excel import.
+
 ## 7. Data model
 
 Two changes: `Section.shortName` and `Section.legacyId` (module 0), and `Staff.plant` (decision 14, module 1).

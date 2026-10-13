@@ -7,13 +7,13 @@ import { DESIGNATION_LABELS, DESIGNATIONS, staffSchema, type StaffInput } from "
 import { diffFields, recordAudit } from "./audit";
 import { ensure } from "./org";
 
-export const IMPORT_COLUMNS = ["Staff No", "Name", "Email", "Position", "Designation", "Department", "Section", "Date Joined", "Job Grade", "Fills Own TNA", "Gender"] as const;
+export const IMPORT_COLUMNS = ["Staff No", "Name", "Email", "Position", "Designation", "Department", "Section", "Date Joined", "Job Grade", "Fills Own TNA", "Gender", "Plant"] as const;
 /**
  * Added after phase 1. A file without one of these columns (an older template)
  * leaves that value as it is on existing records, where a blank cell under any
  * other heading clears it.
  */
-const KEEP_WHEN_ABSENT = { jobGrade: "Job Grade", fillsOwnTna: "Fills Own TNA", gender: "Gender" } as const;
+const KEEP_WHEN_ABSENT = { jobGrade: "Job Grade", fillsOwnTna: "Fills Own TNA", gender: "Gender", plant: "Plant" } as const;
 const REQUIRED = ["Staff No", "Name", "Designation", "Department"];
 const MAX_ROWS = 2000;
 
@@ -66,7 +66,7 @@ function matchDesignation(s: string): string {
   return s;
 }
 
-type Parsed = { row: number; input?: StaffInput; raw: Record<string, string>; errors: string[]; has: { jobGrade: boolean; fillsOwnTna: boolean; gender: boolean } };
+type Parsed = { row: number; input?: StaffInput; raw: Record<string, string>; errors: string[]; has: { jobGrade: boolean; fillsOwnTna: boolean; gender: boolean; plant: boolean } };
 
 /** "Male" / "Female" (or M, F, Lelaki, Perempuan) as the stored value; blank stays blank; anything else is returned as typed, for the error. */
 function matchGender(s: string): string {
@@ -108,6 +108,7 @@ async function parseWorkbook(buffer: ArrayBuffer): Promise<Parsed[]> {
 
   const has = { jobGrade: header.has(KEEP_WHEN_ABSENT.jobGrade.toLowerCase()), fillsOwnTna: header.has(KEEP_WHEN_ABSENT.fillsOwnTna.toLowerCase()),
     gender: header.has(KEEP_WHEN_ABSENT.gender.toLowerCase()),
+    plant: header.has(KEEP_WHEN_ABSENT.plant.toLowerCase()),
   };
   const parsed: Parsed[] = [];
   const seen = new Map<string, number>();
@@ -141,6 +142,7 @@ async function parseWorkbook(buffer: ArrayBuffer): Promise<Parsed[]> {
       position: raw["Position"],
       designation: matchDesignation(raw["Designation"]),
       gender: matchGender(raw["Gender"]),
+      plant: raw["Plant"] ?? "",
       departmentId: dept ? String(dept.id) : "",
       sectionId,
       dateJoined: date ?? "",
@@ -152,7 +154,7 @@ async function parseWorkbook(buffer: ArrayBuffer): Promise<Parsed[]> {
         const field = String(issue.path[0]);
         if (field === "departmentId" && raw["Department"]) continue; // already reported above
         if (field === "dateJoined") continue; // reported above with the value typed
-        const label = { staffNo: "Staff No", name: "Name", email: "Email", designation: "Designation", departmentId: "Department", position: "Position", jobGrade: "Job Grade", gender: "Gender" }[field] ?? field;
+        const label = { staffNo: "Staff No", name: "Name", email: "Email", designation: "Designation", departmentId: "Department", position: "Position", jobGrade: "Job Grade", gender: "Gender", plant: "Plant" }[field] ?? field;
         errors.push(`${label}: ${field === "designation" ? `"${raw["Designation"]}" is not one of ${Object.values(DESIGNATION_LABELS).join(", ")}` : issue.message}`);
       }
     }
@@ -178,9 +180,10 @@ const FIELD_LABELS: Record<string, string> = {
   jobGrade: "job grade",
   fillsOwnTna: "fills own TNA",
   gender: "gender",
+  plant: "plant",
 };
 
-const IMPORT_FIELDS: (keyof StaffInput & string)[] = ["name", "email", "position", "designation", "departmentId", "sectionId", "dateJoined", "jobGrade", "fillsOwnTna", "gender"];
+const IMPORT_FIELDS: (keyof StaffInput & string)[] = ["name", "email", "position", "designation", "departmentId", "sectionId", "dateJoined", "jobGrade", "fillsOwnTna", "gender", "plant"];
 
 async function plan(user: SessionUser, buffer: ArrayBuffer) {
   const parsed = await parseWorkbook(buffer);
@@ -199,6 +202,7 @@ async function plan(user: SessionUser, buffer: ArrayBuffer) {
       ...raw.input,
       jobGrade: raw.has.jobGrade ? raw.input.jobGrade : (current?.jobGrade ?? null),
       gender: raw.has.gender ? raw.input.gender : (current?.gender ?? null),
+      plant: raw.has.plant ? raw.input.plant : (current?.plant ?? null),
       fillsOwnTna: raw.has.fillsOwnTna && isAdmin(user) ? raw.input.fillsOwnTna : (current?.fillsOwnTna ?? false),
     };
     const p = { ...raw, input };
@@ -305,7 +309,8 @@ export async function buildImportTemplate(): Promise<Buffer> {
     "Fills Own TNA: Yes or No (blank is No). For office staff who aren't executives; executives and managers always do. Only the L&D unit can change it.",
     "A Staff No that already exists updates that record. Blank optional cells clear the value.",
     "Gender: Male or Female, or blank when not recorded.",
-    "A file without the Job Grade, Fills Own TNA or Gender column leaves those as they are.",
+    "Plant: where they work, e.g. PEGOH PLANT, or blank when not recorded.",
+    "A file without the Job Grade, Fills Own TNA, Gender or Plant column leaves those as they are.",
   ].forEach((line) => notes.addRow([line]));
   return Buffer.from(await wb.xlsx.writeBuffer());
 }

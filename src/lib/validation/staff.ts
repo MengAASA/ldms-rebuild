@@ -43,6 +43,12 @@ export const staffSchema = z.object({
   designation: z.enum(DESIGNATIONS, "Choose a designation"),
   /** Optional: older records have none. */
   gender: z.union([z.literal(""), z.enum(GENDERS, "Choose Male or Female")]).transform((v) => v || null),
+  /** Where they work, e.g. "PEGOH PLANT". Optional; kept in capitals so the same plant is spelt one way. */
+  plant: z
+    .string()
+    .trim()
+    .max(60, "At most 60 characters")
+    .transform((v) => v.replace(/ +/g, " ").toUpperCase() || null),
   departmentId: z.coerce.number({ error: "Choose a department" }).int().positive("Choose a department"),
   sectionId: z
     .union([z.literal(""), z.coerce.number().int().positive()])

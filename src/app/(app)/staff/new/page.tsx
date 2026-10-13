@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/PageHeader";
 import { isAdmin, manageableDesignations } from "@/server/permissions";
 import { departmentOptions } from "@/server/services/org";
+import { plantOptions } from "@/server/services/staff";
 import { requirePermission } from "@/server/session";
 import { createStaffAction } from "../actions";
 import { StaffForm } from "../StaffForm";
@@ -20,6 +21,7 @@ export default async function NewStaffPage() {
         <StaffForm
           action={createStaffAction}
           departments={departments}
+          plants={await plantOptions()}
           designations={designations}
           submitLabel="Add staff"
           cancelHref="/staff"
@@ -31,6 +33,7 @@ export default async function NewStaffPage() {
             position: "",
             designation: designations.length === 1 ? designations[0] : "",
             gender: "",
+            plant: "",
             departmentId: "",
             sectionId: "",
             dateJoined: "",

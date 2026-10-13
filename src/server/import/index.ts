@@ -1,8 +1,18 @@
 import type { PrismaClient } from "@prisma/client";
-import { IMPORT_PART_LABELS, type ImportPart, databaseAddress, importTargetBlock, partsToRun } from "../rules/import";
+import {
+  HOLDING_DEPARTMENT,
+  HOLDING_DIVISION,
+  IMPORT_PARTS,
+  IMPORT_PART_LABELS,
+  type ImportPart,
+  databaseAddress,
+  importTargetBlock,
+  partsToRun,
+} from "../rules/import";
 import { importOrg } from "./org";
 import { writeReport } from "./report";
 import { ImportRun } from "./run";
+import { importStaff } from "./staff";
 
 // The phase 5 import (docs/phase-5-plan.md): reads the old system's database
 // and fills a new, empty one. Run it as often as needed; each run empties what
@@ -10,6 +20,7 @@ import { ImportRun } from "./run";
 
 const PARTS: Record<ImportPart, (run: ImportRun) => Promise<void>> = {
   org: importOrg,
+  staff: importStaff,
 };
 
 /** A reason a person can act on; thrown for anything that stops the run before it writes. */
@@ -23,11 +34,11 @@ export type ImportOptions = {
 };
 
 /**
- * Empties the database being filled. Every part depends on the org chart, so
- * until parts can be run on their own (the staff part onwards) a run starts
- * from nothing. Children before parents; settings are kept.
+ * Empties what the run is about to load: everything from the part it starts
+ * at onwards, since each part depends on those before it. Children before
+ * parents; settings are kept.
  */
-async function empty(db: PrismaClient) {
+async function empty(db: PrismaClient, from: ImportPart) {
   await db.notification.deleteMany();
   await db.emailMessage.deleteMany();
   await db.jobRun.deleteMany();
@@ -44,11 +55,16 @@ async function empty(db: PrismaClient) {
   await db.participant.deleteMany();
   await db.trainingSession.deleteMany();
   await db.training.deleteMany();
-  await db.auditLog.deleteMany();
+  // The import's own entries for the parts that stay are kept; everything else in the log goes.
+  await db.auditLog.deleteMany({ where: { NOT: { entity: "Import", entityId: { in: IMPORT_PARTS.slice(0, IMPORT_PARTS.indexOf(from)) } } } });
   await db.staffRole.deleteMany();
   await db.department.updateMany({ data: { hodId: null } });
   await db.division.updateMany({ data: { headId: null } });
   await db.staff.deleteMany();
+  // The holding department is made with the staff, so it goes with them.
+  await db.department.deleteMany({ where: { name: HOLDING_DEPARTMENT, legacyId: null } });
+  await db.division.deleteMany({ where: { name: HOLDING_DIVISION, legacyId: null } });
+  if (from !== "org") return;
   await db.section.deleteMany();
   await db.department.deleteMany();
   await db.division.deleteMany();
@@ -78,7 +94,7 @@ export async function runImport(env: { old?: string; target?: string; app?: stri
           `${into} has ${changes} change(s) made by people since it was last filled. The import would empty it. ` +
             `If that is what you want, run it again with --discard-changes.`,
         );
-      await empty(run.target);
+      await empty(run.target, parts[0]);
       await ensureSettings(run.target);
     }
 
@@ -86,7 +102,7 @@ export async function runImport(env: { old?: string; target?: string; app?: stri
       console.log(`${options.checkOnly ? "Checking" : "Importing"}: ${IMPORT_PART_LABELS[part]}`);
       await PARTS[part](run);
       if (!options.checkOnly) {
-        const mine = run.counts.filter((c) => c.part === part && !c.what.includes("with the same"));
+        const mine = run.counts.filter((c) => c.part === part).slice(0, 3); // the headline figures; the rest are in the report
         const summary = `Imported from the old system: ${mine.map((c) => `${c.imported} ${c.what.toLowerCase()}`).join(", ")}`;
         await run.target.auditLog.create({ data: { action: "IMPORT", entity: "Import", entityId: part, summary: summary.slice(0, 255) } });
       }

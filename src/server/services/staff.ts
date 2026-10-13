@@ -94,6 +94,7 @@ const listSelect = {
   position: true,
   designation: true,
   gender: true,
+  plant: true,
   status: true,
   dateJoined: true,
   dateResigned: true,
@@ -197,6 +198,7 @@ const EDITABLE: (keyof StaffInput & string)[] = [
   "position",
   "designation",
   "gender",
+  "plant",
   "departmentId",
   "sectionId",
   "dateJoined",
@@ -320,4 +322,10 @@ export async function changeOwnPassword(user: SessionUser, current: string, next
     await tx.staff.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false, sessionVersion: { increment: 1 } } });
     await recordAudit(tx, { actorId: user.id, action: "UPDATE", entity: "Staff", entityId: user.id, summary: "Changed own password" });
   });
+}
+
+/** The plants already on staff records, for the staff form's suggestions. */
+export async function plantOptions(): Promise<string[]> {
+  const rows = await db.staff.findMany({ where: { plant: { not: null } }, distinct: ["plant"], select: { plant: true }, orderBy: { plant: "asc" } });
+  return rows.flatMap((r) => (r.plant ? [r.plant] : []));
 }

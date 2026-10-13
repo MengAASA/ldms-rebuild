@@ -106,6 +106,7 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             <SheetItem label="Position">{staff.position ?? <span className="text-ink-3">Not recorded</span>}</SheetItem>
             <SheetItem label="Designation">{DESIGNATION_LABELS[staff.designation]}</SheetItem>
             <SheetItem label="Gender">{staff.gender ? GENDER_LABELS[staff.gender] : <span className="text-ink-3">Not recorded</span>}</SheetItem>
+            <SheetItem label="Plant">{staff.plant ?? <span className="text-ink-3">Not recorded</span>}</SheetItem>
             <SheetItem label="Job grade">{staff.jobGrade ? <span className="num">{staff.jobGrade}</span> : <span className="text-ink-3">None</span>}</SheetItem>
             <SheetItem label="TNA">
               {tnaKindLabel({ ...staff, isHead: staff.hodOf.length > 0 || staff.headOf.length > 0 })}
@@ -156,6 +157,7 @@ export default async function StaffRecordPage({ params, searchParams }: PageProp
             fields={{
               jobGrade: { label: "Job grade" },
               gender: { label: "Gender", format: (v) => (v === "MALE" || v === "FEMALE" ? GENDER_LABELS[v] : "Not recorded") },
+              plant: { label: "Plant", format: (v) => (typeof v === "string" && v ? v : "Not recorded") },
               fillsOwnTna: { label: "Fills in own TNA", format: (v) => (v === true || v === "true" ? "Yes" : "No") },
             }}
           />

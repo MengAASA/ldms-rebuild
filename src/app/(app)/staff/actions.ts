@@ -17,6 +17,7 @@ const fields = (fd: FormData) => ({
   position: fd.get("position") ?? "",
   designation: fd.get("designation") ?? "",
   gender: fd.get("gender") ?? "",
+  plant: fd.get("plant") ?? "",
   departmentId: fd.get("departmentId") ?? "",
   sectionId: fd.get("sectionId") ?? "",
   dateJoined: fd.get("dateJoined") ?? "",

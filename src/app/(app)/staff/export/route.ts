@@ -25,6 +25,7 @@ export async function GET(request: Request) {
     { header: "Position", key: "position", width: 30 },
     { header: "Designation", key: "designation", width: 16 },
     { header: "Gender", key: "gender", width: 10 },
+    { header: "Plant", key: "plant", width: 24 },
     { header: "Job Grade", key: "jobGrade", width: 10 },
     { header: "Fills Own TNA", key: "fillsOwnTna", width: 14 },
     { header: "Division", key: "division", width: 22 },
@@ -35,7 +36,7 @@ export async function GET(request: Request) {
     { header: "Date Resigned", key: "dateResigned", width: 14, style: { numFmt: "dd/mm/yyyy" } },
   ];
   ws.getRow(1).font = { bold: true };
-  ws.autoFilter = { from: "A1", to: "N1" };
+  ws.autoFilter = { from: "A1", to: "O1" };
   for (const s of rows) {
     ws.addRow({
       staffNo: s.staffNo,
@@ -44,6 +45,7 @@ export async function GET(request: Request) {
       position: s.position ?? "",
       designation: DESIGNATION_LABELS[s.designation],
       gender: s.gender ? GENDER_LABELS[s.gender] : "",
+      plant: s.plant ?? "",
       jobGrade: s.jobGrade,
       fillsOwnTna: s.fillsOwnTna ? "Yes" : "No",
       division: s.department.division.name,

@@ -17,6 +17,7 @@ export type StaffFormValues = {
   position: string;
   designation: string;
   gender: string;
+  plant: string;
   departmentId: number | "";
   sectionId: number | "";
   dateJoined: string;
@@ -28,6 +29,7 @@ export function StaffForm({
   action,
   initial,
   departments,
+  plants,
   designations,
   submitLabel,
   cancelHref,
@@ -36,6 +38,8 @@ export function StaffForm({
   action: (prev: ActionState, fd: FormData) => Promise<ActionState>;
   initial: StaffFormValues;
   departments: Department[];
+  /** The plants already on staff records, offered as suggestions. */
+  plants: string[];
   designations: string[];
   submitLabel: string;
   cancelHref: string;
@@ -139,6 +143,14 @@ export function StaffForm({
               placeholder="Not recorded"
               options={[{ value: "", label: "Not recorded" }, ...GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] }))]}
             />
+          </Field>
+          <Field label="Plant" name="plant" state={state} hint="Where they work, e.g. PEGOH PLANT. Pick one from the list or type a new one.">
+            <input {...fieldProps("plant", state)} defaultValue={initial.plant} className="input" maxLength={60} list="staff-plants" autoComplete="off" />
+            <datalist id="staff-plants">
+              {plants.map((p) => (
+                <option key={p} value={p} />
+              ))}
+            </datalist>
           </Field>
           <Field label="Date joined" name="dateJoined" state={state}>
             <DateField {...fieldProps("dateJoined", state)} defaultValue={initial.dateJoined} />

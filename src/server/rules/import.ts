@@ -52,11 +52,12 @@ export function isReadOnlySql(sql: string): boolean {
 
 // Each part needs the ones before it (attendance needs staff, staff need
 // departments), so running one part also empties and reloads those after it.
-export const IMPORT_PARTS = ["org"] as const;
+export const IMPORT_PARTS = ["org", "staff"] as const;
 export type ImportPart = (typeof IMPORT_PARTS)[number];
 
 export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
   org: "Divisions, departments and sections",
+  staff: "Staff, roles, HODs and division heads",
 };
 
 /** The parts a run covers: all of them, or the one asked for and those that depend on it. */
@@ -98,3 +99,106 @@ export function cleanShortName(raw: unknown): Cleaned {
 export function isDeletedDepartment(name: unknown): boolean {
   return typeof name === "string" && /^\s*\(deleted\)/i.test(name);
 }
+
+// ---------- Staff ----------
+
+export type NewDesignation = "NON_EXECUTIVE" | "EXECUTIVE" | "MANAGER" | "CONTRACT" | "TRAINEE";
+
+const DESIGNATION_MAP: Record<string, NewDesignation> = {
+  "NON EXECUTIVE": "NON_EXECUTIVE",
+  EXECUTIVE: "EXECUTIVE",
+  "MANAGER (AM/HOS & ABOVE)": "MANAGER",
+  MANAGER: "MANAGER",
+  CONTRACT: "CONTRACT",
+  TRAINEE: "TRAINEE",
+};
+
+const key = (raw: unknown) => (typeof raw === "string" ? raw.replace(/ +/g, " ").trim().toUpperCase() : "");
+
+/** The old designation as one of v2's five; null when it is none of them. */
+export function mapDesignation(raw: unknown): NewDesignation | null {
+  return DESIGNATION_MAP[key(raw)] ?? null;
+}
+
+/**
+ * The old status. The old system only ever asks "not resigned", so a blank
+ * status is an active member of staff (decision 3). `blank` lets the caller
+ * list those for HR. Null: a word the old system never wrote.
+ */
+export function mapStaffStatus(raw: unknown): { status: "ACTIVE" | "RESIGNED"; blank: boolean } | null {
+  const s = key(raw);
+  if (s === "RESIGN") return { status: "RESIGNED", blank: false };
+  if (s === "ACTIVE") return { status: "ACTIVE", blank: false };
+  return s === "" ? { status: "ACTIVE", blank: true } : null;
+}
+
+export function mapGender(raw: unknown): "MALE" | "FEMALE" | null {
+  const s = key(raw);
+  return s === "MALE" || s === "FEMALE" ? s : null;
+}
+
+/** Job grade 1 to 5; the old 0 and blank mean none. */
+export function mapJobGrade(raw: unknown): number | null {
+  const n = typeof raw === "number" ? raw : Number.NaN;
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+}
+
+/**
+ * A staff number as v2 keeps it: trimmed, in capitals. `unusual` says it would
+ * be refused on the staff form (a space, a symbol, or under 3 characters): it
+ * is imported as it is, because people sign in with it, and listed for HR.
+ */
+export function cleanStaffNo(raw: unknown): { value: string | null; unusual: boolean } {
+  const value = typeof raw === "string" ? raw.trim().toUpperCase() : "";
+  if (!value || value.length > 20) return { value: null, unusual: true };
+  return { value, unusual: !/^[A-Z0-9-]{3,}$/.test(value) };
+}
+
+/** An old password as `Staff.legacyMd5` holds it: 32 hex characters in lower case, or nothing. */
+export function cleanMd5(raw: unknown): string | null {
+  const s = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  return /^[0-9a-f]{32}$/.test(s) ? s : null;
+}
+
+/** A date the old database holds as text (YYYY-MM-DD); null for none, a zero date or one that isn't a real day. */
+export function cleanDate(raw: unknown): Date | null {
+  const m = typeof raw === "string" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(raw) : null;
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const date = new Date(Date.UTC(y, mo - 1, d));
+  return y >= 1900 && date.getUTCFullYear() === y && date.getUTCMonth() === mo - 1 && date.getUTCDate() === d ? date : null;
+}
+
+export type OldRoles = { roles: ("LD_ADMIN" | "MAIN_CLERK")[]; fillsOwnTna: boolean; markedHod: boolean; unknown: string[] };
+
+/**
+ * What the old `roletype` and `usertype` give a person in v2. Every old clerk
+ * is marked MAIN, so every clerk becomes a main clerk (decision 5). HOD is not
+ * a role in v2: it comes from the org chart, so `markedHod` is only for
+ * checking. A word that is neither known nor blank comes back in `unknown`.
+ */
+export function mapOldRoles(roletype: unknown, usertype: unknown): OldRoles {
+  const r = key(roletype);
+  const u = key(usertype);
+  const out: OldRoles = { roles: [], fillsOwnTna: u === "OFFICE", markedHod: u === "HOD", unknown: [] };
+  if (r === "ADMIN") out.roles.push("LD_ADMIN");
+  else if (r === "CLERK") out.roles.push("MAIN_CLERK");
+  else if (r) out.unknown.push(`roletype ${r}`);
+  if (u && !["OFFICE", "HOD", "MAIN", "ADMIN"].includes(u)) out.unknown.push(`usertype ${u}`);
+  return out;
+}
+
+/**
+ * Whether a person must choose a new password the first time they sign in to
+ * v2: yes when their old password is one that others have too. Nearly all
+ * staff are still on the password they were given, which anyone could use
+ * with someone else's staff number.
+ */
+export function mustChangeOldPassword(peopleWithThisPassword: number): boolean {
+  return peopleWithThisPassword > 1;
+}
+
+// Staff who can't be given their old department: it was blank, or it is one
+// the old system marks as deleted (decision 4).
+export const HOLDING_DIVISION = "No division (old system)";
+export const HOLDING_DEPARTMENT = "No department (old system)";

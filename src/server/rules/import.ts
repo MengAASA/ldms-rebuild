@@ -52,12 +52,13 @@ export function isReadOnlySql(sql: string): boolean {
 
 // Each part needs the ones before it (attendance needs staff, staff need
 // departments), so running one part also empties and reloads those after it.
-export const IMPORT_PARTS = ["org", "staff"] as const;
+export const IMPORT_PARTS = ["org", "staff", "training"] as const;
 export type ImportPart = (typeof IMPORT_PARTS)[number];
 
 export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
   org: "Divisions, departments and sections",
   staff: "Staff, roles, HODs and division heads",
+  training: "Trainings, attendance and course feedback",
 };
 
 /** The parts a run covers: all of them, or the one asked for and those that depend on it. */
@@ -202,3 +203,113 @@ export function mustChangeOldPassword(peopleWithThisPassword: number): boolean {
 // the old system marks as deleted (decision 4).
 export const HOLDING_DIVISION = "No division (old system)";
 export const HOLDING_DEPARTMENT = "No department (old system)";
+
+// ---------- Trainings ----------
+
+export type NewProgram = "EXTERNAL_PUBLIC" | "INTERNAL_EXTERNAL_TRAINER" | "INTERNAL_INTERNAL_TRAINER";
+
+const PROGRAM_MAP: Record<string, NewProgram> = { EXT: "EXTERNAL_PUBLIC", INTX: "INTERNAL_EXTERNAL_TRAINER", INTI: "INTERNAL_INTERNAL_TRAINER" };
+const FUNCTION_MAP = { BUSINESS: "BUSINESS", DIGITAL: "DIGITAL", LEADERSHIP: "LEADERSHIP", "PERSONAL EFFECTIVENESS": "PERSONAL_EFFECTIVENESS" } as const;
+const PLATFORM_MAP = { PHYSICAL: "PHYSICAL", ONLINE: "ONLINE" } as const;
+
+/**
+ * An old value mapped to one of v2's: `value` is null when it was blank;
+ * `known` is false for a word with no mapping (the caller lists it).
+ */
+export type Mapped<T> = { value: T | null; known: boolean };
+
+function mapWord<T>(map: Record<string, T>, raw: unknown): Mapped<T> {
+  const k = key(raw);
+  if (!k) return { value: null, known: true };
+  return k in map ? { value: map[k], known: true } : { value: null, known: false };
+}
+
+/** `EXT`, `INTX`, `INTI` → external public, internal by an external trainer, internal by an internal trainer. */
+export const mapProgram = (raw: unknown) => mapWord<NewProgram>(PROGRAM_MAP, raw);
+export const mapFunction = (raw: unknown) => mapWord<(typeof FUNCTION_MAP)[keyof typeof FUNCTION_MAP]>(FUNCTION_MAP, raw);
+export const mapPlatform = (raw: unknown) => mapWord<(typeof PLATFORM_MAP)[keyof typeof PLATFORM_MAP]>(PLATFORM_MAP, raw);
+/** The old `hadc` column (HRDC claimable): YES or NO. */
+export const mapHrdc = (raw: unknown) => mapWord<boolean>({ YES: true, NO: false }, raw);
+
+/** A time the old database holds as text (HH:MM or HH:MM:SS) as Prisma stores @db.Time: a Date on 1970-01-01 UTC. */
+export function cleanTime(raw: unknown): Date | null {
+  const m = typeof raw === "string" ? /^(\d{1,2}):([0-5]\d)(?::([0-5]\d))?$/.exec(raw.trim()) : null;
+  if (!m || Number(m[1]) > 23) return null;
+  return new Date(Date.UTC(1970, 0, 1, Number(m[1]), Number(m[2]), Number(m[3] ?? 0)));
+}
+
+/** A person's name as two records are compared: capitals, single spaces. */
+export const nameKey = (raw: unknown) => key(raw);
+
+// ---------- Attendance ----------
+
+/**
+ * Attendance left blank is Pending from this year on, so the person can still
+ * complete it, and Absent before it (decision 8). It is the first year the old
+ * system's live tables hold; the archive tables hold the years before.
+ */
+export const PENDING_FROM_YEAR = 2026;
+export const NOT_COMPLETED_REASON = "Not completed in the old system";
+
+export type MappedAttendance = { attendance: "PENDING" | "COMPLETED" | "ABSENT"; reason: string | null; blank: boolean };
+
+/**
+ * The old attendance (`COMPLETED`, `COMPLETEDOJT`, `ABSENT` or blank) for a
+ * training that started in `year`. Null: a word the old system never wrote.
+ */
+export function mapAttendance(raw: unknown, year: number): MappedAttendance | null {
+  const s = key(raw);
+  if (s === "COMPLETED" || s === "COMPLETEDOJT") return { attendance: "COMPLETED", reason: null, blank: false };
+  if (s === "ABSENT") return { attendance: "ABSENT", reason: null, blank: false };
+  if (s) return null;
+  return year >= PENDING_FROM_YEAR ? { attendance: "PENDING", reason: null, blank: true } : { attendance: "ABSENT", reason: NOT_COMPLETED_REASON, blank: true };
+}
+
+/**
+ * Of the rows that put the same person on the same training, the one kept
+ * (decision 7): a completed one if there is one, then one with feedback, then
+ * the oldest. The others are listed in the import report.
+ */
+export function keptDuplicate<R extends { id: number; completed: boolean; hasFeedback: boolean }>(rows: R[]): R {
+  const rank = (r: R) => (r.completed ? 2 : 0) + (r.hasFeedback ? 1 : 0);
+  return rows.reduce((best, r) => (rank(r) > rank(best) || (rank(r) === rank(best) && r.id < best.id) ? r : best));
+}
+
+// ---------- Course feedback ----------
+
+const RATINGS = ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11"] as const;
+const WRITTEN = ["q13", "q14", "q15", "q16"] as const;
+/** The longest written answer v2 keeps (MAX_ANSWER on the form). */
+export const MAX_WRITTEN_ANSWER = 1000;
+
+export type OldFeedback = Partial<Record<(typeof RATINGS)[number] | "q12" | (typeof WRITTEN)[number], unknown>>;
+
+/**
+ * The old `q1`–`q16` as the course feedback form stores its answers: ratings
+ * 1–5, q12 as YES or NO, written answers trimmed (line breaks kept). Blank
+ * stays blank. `answers` is null when nothing was answered. `odd` lists an
+ * answer that doesn't fit its question (left blank) or a written one that was
+ * cut to fit.
+ */
+export function mapFeedback(row: OldFeedback): { answers: Record<string, number | string | null> | null; odd: string[] } {
+  const answers: Record<string, number | string | null> = {};
+  const odd: string[] = [];
+  let given = 0;
+  for (const q of RATINGS) {
+    const s = typeof row[q] === "string" ? (row[q] as string).trim() : row[q] == null ? "" : String(row[q]);
+    answers[q] = /^[1-5]$/.test(s) ? Number(s) : null;
+    if (s && answers[q] === null) odd.push(`${q} "${s}"`);
+    if (answers[q] !== null) given++;
+  }
+  const yn = key(row.q12);
+  answers.q12 = yn === "YES" || yn === "NO" ? yn : null;
+  if (yn && answers.q12 === null) odd.push(`q12 "${String(row.q12).trim()}"`);
+  if (answers.q12 !== null) given++;
+  for (const q of WRITTEN) {
+    const s = typeof row[q] === "string" ? (row[q] as string).trim() : "";
+    answers[q] = s ? s.slice(0, MAX_WRITTEN_ANSWER) : null;
+    if (s.length > MAX_WRITTEN_ANSWER) odd.push(`${q} cut to ${MAX_WRITTEN_ANSWER} characters`);
+    if (s) given++;
+  }
+  return { answers: given ? answers : null, odd };
+}

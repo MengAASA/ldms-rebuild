@@ -44,7 +44,14 @@ export async function writeReport(run: ImportRun, from: string, into: string): P
       { header: "Difference", key: "gap", width: 14 },
       { header: "Note", key: "note", width: 60 },
     ],
-    run.counts.map((c) => ({ part: IMPORT_PART_LABELS[c.part], what: c.what, old: c.old, imported: c.imported, gap: c.imported - c.old, note: c.note })),
+    run.counts.map((c) => ({
+      part: IMPORT_PART_LABELS[c.part],
+      what: c.what,
+      old: c.old,
+      imported: c.imported,
+      gap: Math.round((c.imported - c.old) * 100) / 100,
+      note: c.note,
+    })),
   );
 
   const byReason = new Map<string, typeof run.issues>();

@@ -5,16 +5,25 @@ import {
   cleanShortName,
   cleanStaffNo,
   cleanText,
+  cleanTime,
   databaseAddress,
   importTargetBlock,
   isDeletedDepartment,
   isReadOnlySql,
+  keptDuplicate,
+  mapAttendance,
   mapDesignation,
+  mapFeedback,
+  mapFunction,
   mapGender,
+  mapHrdc,
   mapJobGrade,
   mapOldRoles,
+  mapPlatform,
+  mapProgram,
   mapStaffStatus,
   mustChangeOldPassword,
+  NOT_COMPLETED_REASON,
   partsToRun,
 } from "@/server/rules/import";
 
@@ -78,11 +87,12 @@ describe("the old database is only read", () => {
 
 describe("the parts of the import", () => {
   it("runs every part when none is named", () => {
-    expect(partsToRun(undefined)).toEqual(["org", "staff"]);
+    expect(partsToRun(undefined)).toEqual(["org", "staff", "training"]);
   });
   it("runs the named part and those that depend on it", () => {
-    expect(partsToRun("org")).toEqual(["org", "staff"]);
-    expect(partsToRun("staff")).toEqual(["staff"]);
+    expect(partsToRun("org")).toEqual(["org", "staff", "training"]);
+    expect(partsToRun("staff")).toEqual(["staff", "training"]);
+    expect(partsToRun("training")).toEqual(["training"]);
   });
   it("doesn't know a made-up part", () => {
     expect(partsToRun("everything")).toBeNull();
@@ -196,5 +206,84 @@ describe("old passwords", () => {
   });
   it("may be kept when it is the person's own", () => {
     expect(mustChangeOldPassword(1)).toBe(false);
+  });
+});
+
+describe("old trainings", () => {
+  it("maps the program, function, platform and HRDC words", () => {
+    expect(mapProgram("EXT")).toEqual({ value: "EXTERNAL_PUBLIC", known: true });
+    expect(mapProgram(" intx ")).toEqual({ value: "INTERNAL_EXTERNAL_TRAINER", known: true });
+    expect(mapProgram("INTI")).toEqual({ value: "INTERNAL_INTERNAL_TRAINER", known: true });
+    expect(mapFunction("PERSONAL  EFFECTIVENESS")).toEqual({ value: "PERSONAL_EFFECTIVENESS", known: true });
+    expect(mapPlatform("ONLINE")).toEqual({ value: "ONLINE", known: true });
+    expect(mapHrdc("YES")).toEqual({ value: true, known: true });
+    expect(mapHrdc("NO")).toEqual({ value: false, known: true });
+  });
+  it("leaves a blank one blank, and says so apart from a word it doesn't know", () => {
+    expect(mapFunction("")).toEqual({ value: null, known: true });
+    expect(mapHrdc(null)).toEqual({ value: null, known: true });
+    expect(mapProgram("DEPARTMENTAL")).toEqual({ value: null, known: false });
+    expect(mapPlatform("HYBRID")).toEqual({ value: null, known: false });
+  });
+  it("reads a time as Prisma stores it", () => {
+    expect(cleanTime("08:30:00")?.toISOString()).toBe("1970-01-01T08:30:00.000Z");
+    expect(cleanTime("17:30")?.toISOString()).toBe("1970-01-01T17:30:00.000Z");
+    expect(cleanTime("24:00:00")).toBeNull();
+    expect(cleanTime(null)).toBeNull();
+  });
+});
+
+describe("old attendance", () => {
+  it("maps completed and absent", () => {
+    expect(mapAttendance("COMPLETED", 2024)).toEqual({ attendance: "COMPLETED", reason: null, blank: false });
+    expect(mapAttendance("COMPLETEDOJT", 2026)).toEqual({ attendance: "COMPLETED", reason: null, blank: false });
+    expect(mapAttendance("ABSENT", 2026)).toEqual({ attendance: "ABSENT", reason: null, blank: false });
+  });
+  it("leaves this year's blank attendance pending, so the person can still complete it (decision 8)", () => {
+    expect(mapAttendance(null, 2026)).toEqual({ attendance: "PENDING", reason: null, blank: true });
+    expect(mapAttendance("", 2027)).toEqual({ attendance: "PENDING", reason: null, blank: true });
+  });
+  it("makes earlier blank attendance absent, with the reason", () => {
+    expect(mapAttendance(" ", 2025)).toEqual({ attendance: "ABSENT", reason: NOT_COMPLETED_REASON, blank: true });
+  });
+  it("refuses a word it doesn't know", () => {
+    expect(mapAttendance("MAYBE", 2026)).toBeNull();
+  });
+});
+
+describe("the same person on a training more than once (decision 7)", () => {
+  const row = (id: number, completed: boolean, hasFeedback: boolean) => ({ id, completed, hasFeedback });
+  it("keeps a completed row", () => {
+    expect(keptDuplicate([row(1, false, false), row(2, true, false)]).id).toBe(2);
+  });
+  it("then one with feedback", () => {
+    expect(keptDuplicate([row(1, true, false), row(2, true, true), row(3, false, true)]).id).toBe(2);
+  });
+  it("then the oldest", () => {
+    expect(keptDuplicate([row(5, true, true), row(3, true, true)]).id).toBe(3);
+    expect(keptDuplicate([row(9, false, false), row(4, false, false)]).id).toBe(4);
+  });
+});
+
+describe("old course feedback", () => {
+  const all = { q1: "5", q2: "4", q3: "3", q4: "2", q5: "1", q6: "5", q7: "4", q8: "4", q9: "5", q10: "5", q11: "4", q12: "Yes" };
+  it("stores ratings as numbers, q12 as YES or NO, and written answers as given", () => {
+    const { answers, odd } = mapFeedback({ ...all, q13: "  Line one\nline two ", q14: "", q15: null, q16: "Ok" });
+    expect(odd).toEqual([]);
+    expect(answers).toMatchObject({ q1: 5, q5: 1, q11: 4, q12: "YES", q13: "Line one\nline two", q14: null, q15: null, q16: "Ok" });
+    expect(mapFeedback({ ...all, q12: "No" }).answers?.q12).toBe("NO");
+  });
+  it("is nothing when nothing was answered", () => {
+    expect(mapFeedback({ q1: "", q12: null, q13: " " })).toEqual({ answers: null, odd: [] });
+  });
+  it("leaves an answer that doesn't fit its question blank, and lists it", () => {
+    const { answers, odd } = mapFeedback({ ...all, q3: "7", q12: "5" });
+    expect(answers).toMatchObject({ q3: null, q12: null });
+    expect(odd).toEqual(['q3 "7"', 'q12 "5"']);
+  });
+  it("cuts a written answer to the form's limit", () => {
+    const { answers, odd } = mapFeedback({ q13: "x".repeat(1200) });
+    expect((answers?.q13 as string).length).toBe(1000);
+    expect(odd).toEqual(["q13 cut to 1000 characters"]);
   });
 });

@@ -13,6 +13,7 @@ import { importOrg } from "./org";
 import { writeReport } from "./report";
 import { ImportRun } from "./run";
 import { importStaff } from "./staff";
+import { importTrainings } from "./training";
 
 // The phase 5 import (docs/phase-5-plan.md): reads the old system's database
 // and fills a new, empty one. Run it as often as needed; each run empties what
@@ -21,6 +22,7 @@ import { importStaff } from "./staff";
 const PARTS: Record<ImportPart, (run: ImportRun) => Promise<void>> = {
   org: importOrg,
   staff: importStaff,
+  training: importTrainings,
 };
 
 /** A reason a person can act on; thrown for anything that stops the run before it writes. */
@@ -57,6 +59,7 @@ async function empty(db: PrismaClient, from: ImportPart) {
   await db.training.deleteMany();
   // The import's own entries for the parts that stay are kept; everything else in the log goes.
   await db.auditLog.deleteMany({ where: { NOT: { entity: "Import", entityId: { in: IMPORT_PARTS.slice(0, IMPORT_PARTS.indexOf(from)) } } } });
+  if (from === "training") return;
   await db.staffRole.deleteMany();
   await db.department.updateMany({ data: { hodId: null } });
   await db.division.updateMany({ data: { headId: null } });
@@ -109,7 +112,14 @@ export async function runImport(env: { old?: string; target?: string; app?: stri
     }
 
     const file = await writeReport(run, from, into);
-    return { from, into, file, lines: run.summaryLines(), differences: run.counts.filter((c) => c.old !== c.imported).length, listed: run.issues.length };
+    return {
+      from,
+      into,
+      file,
+      lines: run.summaryLines(),
+      differences: run.counts.filter((c) => !c.reportOnly && c.old !== c.imported).length,
+      listed: run.issues.length,
+    };
   } finally {
     await run.close();
   }

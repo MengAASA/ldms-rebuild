@@ -9,7 +9,7 @@ import { IMPORT_PART_LABELS, type ImportPart, isReadOnlySql } from "../rules/imp
 export type Issue = { part: ImportPart; reason: string; table: string; oldId: number | string; note: string };
 
 /** One line of the comparison: how many the old system has, and how many are in v2 now. */
-export type Count = { part: ImportPart; what: string; old: number; imported: number; note: string };
+export type Count = { part: ImportPart; what: string; old: number; imported: number; note: string; reportOnly?: boolean };
 
 export class ImportRun {
   readonly old: PrismaClient;
@@ -44,13 +44,19 @@ export class ImportRun {
     this.counts.push({ part, what, old, imported, note });
   }
 
+  /** A line of the comparison too detailed for the terminal: it goes in the report only. */
+  detail(part: ImportPart, what: string, old: number, imported: number, note = "") {
+    this.counts.push({ part, what, old, imported, note, reportOnly: true });
+  }
+
   /** The comparison, for the terminal. */
   summaryLines(): string[] {
     const lines: string[] = [];
     let part: ImportPart | null = null;
     for (const c of this.counts) {
+      if (c.reportOnly) continue;
       if (c.part !== part) lines.push("", IMPORT_PART_LABELS[(part = c.part)]);
-      const gap = c.imported - c.old;
+      const gap = Math.round((c.imported - c.old) * 100) / 100; // hours have decimals
       lines.push(
         `  ${c.what.padEnd(38)} old ${String(c.old).padStart(7)}   v2 ${String(c.imported).padStart(7)}   ${gap === 0 ? "same" : `${gap > 0 ? "+" : ""}${gap}`}${c.note ? `   ${c.note}` : ""}`,
       );

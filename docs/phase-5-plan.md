@@ -274,6 +274,37 @@ Modules 0 and 1 are small and could be reviewed together.
 - **Tests**: 18 more unit tests in `tests/rules/import.test.ts`; `staff-changes.spec.ts` covers Plant on the form,
   the record, the export and the Excel import.
 
+### Module 2: Trainings (built 15 Oct 2026)
+
+- **The training part** (`src/server/import/training.ts`, `--only training`): all 662 trainings (164 in 2023, 143 in
+  2024, 201 in 2025, 154 in 2026) as Public / In-house, with their old training codes, program, function, platform,
+  HRDC, cost, venue and trainer. The live and archive tables' ids don't overlap. 77 of the 87 "internal training by
+  internal trainer" are linked to the staff record of that name, so they count on the Dashboard's top trainers.
+- **Attendance**: 8,494 of the 8,895 old rows. Left out, each listed by old id: 321 whose training is gone, 55 whose
+  staff member is gone, and 25 duplicates (decision 7). Blank attendance: 301 in 2026 are Pending, 3 before 2026 are
+  Absent with the reason "Not completed in the old system" (decision 8). Every completed and absent count by year
+  matches the old tables once the duplicates are set aside.
+- **Feedback**: 7,720 rows bring their answers as the course feedback form stores them (version 1): ratings 1–5,
+  q12 Yes / No, written answers with their line breaks. The 3 rows that answer q12 with "5" have it left blank.
+  **The old system kept no date for feedback**, so the training's last day (when its form opened) stands in as the
+  date it was sent: it shows on My Training, the participants list and the audit report. 216 completed rows have no
+  answers: L&D marked them complete, and My Training says so.
+- **Training hours match the old dashboard** for every year and every department, once two things are set aside:
+  the duplicates (13.5 h in 2024, 70.5 h in 2025, 23 h in 2026), and **4 trainings whose end time is at or before
+  their start time** (three in 2026, one in 2024). The old dashboard adds those in as negative hours (−35.5 h in all);
+  v2 gives them no hours until L&D correct the time. What remains is rounding: 0.01 h in 2023. The per-department
+  lines are on the report's Summary sheet. The Reports page's department hours and audit report on the imported
+  copy give the same totals (checked through the services, not on screen).
+- **Listed in the import report for L&D**: 49 trainings with no function, 33 with no platform, 34 with HRDC blank
+  (imported as No), the 4 with impossible times, 4 internal trainers who aren't a staff record by that name (kept
+  as typed), 13 people marked absent who gave feedback (answers kept, but My Training doesn't show them while they
+  are absent).
+- **The comparison** can now carry lines for the report only (`run.detail`), so 43 department lines don't fill
+  the terminal; differences are shown to 2 decimals.
+- **Not here**: PMEs for these trainings (module 4); OJT (module 3).
+- **Tests**: 14 more unit tests (program, function, platform and HRDC words, times, attendance and decision 8, which
+  duplicate is kept, feedback answers).
+
 ## 7. Data model
 
 Two changes: `Section.shortName` and `Section.legacyId` (module 0), and `Staff.plant` (decision 14, module 1).

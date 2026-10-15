@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { FileDown } from "lucide-react";
+import { ExportButton } from "@/components/ExportButton";
 import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 import { Select } from "@/components/ui/Select";
 import { withBasePath } from "@/lib/base-path";
@@ -52,15 +52,11 @@ export function ReportTabs({ current, f }: { current: ReportKey; f: ReportFilter
   );
 }
 
-/** The Excel export of the report as filtered. */
-export function ExportLink({ report, f, training }: { report: ReportKey; f: ReportFilters; training?: number }) {
+/** The Excel export of the report as filtered. `rows`: how many it would hold, when that can be more than one export takes. */
+export function ExportLink({ report, f, training, rows }: { report: ReportKey; f: ReportFilters; training?: number; rows?: number }) {
   const query = reportQuery(f, { page: undefined });
   const more = `report=${report}${training ? `&training=${training}` : ""}`;
-  return (
-    <a href={withBasePath(`/reports/export${query ? `${query}&${more}` : `?${more}`}`)} className="btn">
-      <FileDown size={15} aria-hidden /> Export to Excel
-    </a>
-  );
+  return <ExportButton href={`/reports/export${query ? `${query}&${more}` : `?${more}`}`} rows={rows} />;
 }
 
 /**

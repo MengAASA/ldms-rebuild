@@ -25,7 +25,7 @@ import { departmentTotals, grandTotal, inStaffReport, reportPeriod, round2, staf
 import { countsTowardHours, trainingDays, trainingHours, trainingPhase } from "../rules/training";
 import { ensure } from "./org";
 import { tnaOpen } from "./tna";
-import { hoursSelect, reportDepartments, staffWhere, startsIn, type ReportFilters } from "./report";
+import { completedAttendance, hoursSelect, reportDepartments, staffWhere, startsIn, type ReportFilters } from "./report";
 
 // Read-only figures for the overview. Hours always come from trainingHours and
 // countsTowardHours, and a training belongs to the year and month it starts in
@@ -172,10 +172,7 @@ export async function trainingDashboard(user: SessionUser, f: ReportFilters, tod
       where,
       select: { id: true, staffNo: true, name: true, designation: true, status: true, departmentId: true, department: { select: { name: true } } },
     }),
-    db.participant.findMany({
-      where: { attendance: "COMPLETED", staff: where, training: { status: "SCHEDULED", ...startsIn(period) } },
-      select: { staffId: true, training: { select: { id: true, type: true, title: true, trainingCode: true, ...hoursSelect } } },
-    }),
+    completedAttendance(where, period),
     // Trainings going ahead in the period: all of them for L&D, those with any of their staff on them for others.
     db.training.findMany({
       where: { status: { not: "CANCELLED" }, ...startsIn(period), ...(admin ? {} : { participants: { some: { staff: where } } }) },

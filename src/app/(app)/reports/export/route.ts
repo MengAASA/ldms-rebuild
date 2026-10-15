@@ -4,7 +4,7 @@ import { formatDateRange, formatTime, nowInMalaysia } from "@/lib/format";
 import { ATTENDANCE_LABELS } from "@/lib/validation/participant";
 import { DESIGNATION_LABELS, GENDER_LABELS } from "@/lib/validation/staff";
 import { TRAINING_PROGRAM_LABELS, TRAINING_TYPE_LABELS } from "@/lib/validation/training";
-import { DATE, HOURS, sheet } from "@/server/excel";
+import { DATE, HOURS, refusedExport, sheet, streamingWorkbook } from "@/server/excel";
 import { can } from "@/server/permissions";
 import { PME_STAGE_LABELS } from "@/server/rules/pme";
 import { TRAINING_PHASE_LABELS } from "@/server/rules/training";
@@ -30,7 +30,9 @@ export async function GET(request: Request) {
   const report = url.searchParams.get("report");
   const f = parseReportFilters(Object.fromEntries(url.searchParams));
   const today = nowInMalaysia();
-  const wb = new ExcelJS.Workbook();
+  // The audit report can run to 100,000 lines with the OJTs: its workbook is written out as it is built.
+  const streamed = report === "audit" ? streamingWorkbook() : null;
+  const wb = streamed?.wb ?? new ExcelJS.Workbook();
   wb.creator = "LDMS";
   let name: string;
 
@@ -178,7 +180,9 @@ export async function GET(request: Request) {
       { title: "Total", total: total.total, completed: total.completed, pending: total.pending, absent: total.absent, manHours: total.manHours },
     );
   } else if (report === "audit") {
-    const { period, rows } = await auditReportForExport(user, f, today);
+    const data = await auditReportForExport(user, f, today).catch(refusedExport);
+    if (data instanceof Response) return data;
+    const { period, rows } = data;
     const feedbackQuestions = questionsOf(CURRENT_FORM.FEEDBACK);
     name = "audit report";
     sheet(
@@ -235,7 +239,9 @@ export async function GET(request: Request) {
         hours: r.hours,
         certificate: r.certificate ? "Yes" : "No",
         // An OJT's answers are to a different form: they are in the OJT export.
-        ...(r.training.type === "OJT" ? {} : Object.fromEntries(answerCells("FEEDBACK", r.feedbackVersion, r.feedback).map((cell, n) => [feedbackQuestions[n].id, cell]))),
+        ...(r.training.type === "OJT"
+          ? {}
+          : Object.fromEntries(answerCells("FEEDBACK", r.feedbackVersion, r.feedback).map((cell, n) => [feedbackQuestions[n].id, cell]))),
       })),
     );
   } else {
@@ -243,7 +249,7 @@ export async function GET(request: Request) {
   }
 
   const stamp = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  const buffer = await wb.xlsx.writeBuffer();
+  const buffer = streamed ? await streamed.file() : await wb.xlsx.writeBuffer();
   return new Response(buffer as ArrayBuffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

@@ -260,8 +260,13 @@ Modules 0 and 1 are small and could be reviewed together.
   with no department and 142 from the department marked (DELETED). 243 are resigned; **one is active and needs a real
   department**.
 - **Old passwords**: carried for the 3,087 active staff only. **2,938 of them share one password** (the one they
-  were given), so anyone whose old password is one that others have too (2,945 people) must choose a new one the
-  first time they sign in. The 142 with a password of their own are not asked. `mustChangeOldPassword` is the rule.
+  were given). **Everyone keeps their old password, shared or not: no one is made to choose a new one** (decided
+  15 Oct 2026, replacing the first plan that 2,945 people on a shared password must change it at first sign-in).
+  The downside, accepted: anyone who knows the shared password can sign in as any of them with their staff number.
+  The import report lists the 179 people it matters most for, who keep the shared password and have a role or head
+  a department or division: all 6 L&D admins, 30 HODs, 4 division heads, 50 main clerks and 118 skill matrix
+  evaluators (`oldPasswordShared` is the rule). Changing one's own password may now give the same password again,
+  except in place of a temporary one L&D set with a reset, which they know.
 - **Data model**: `Staff.plant` (decision 14). It is on the staff form (with the plants already in use offered as
   suggestions), the staff record and its history, the staff export, and the Excel staff import as an optional
   "Plant" column.
@@ -304,6 +309,63 @@ Modules 0 and 1 are small and could be reviewed together.
 - **Not here**: PMEs for these trainings (module 4); OJT (module 3).
 - **Tests**: 14 more unit tests (program, function, platform and HRDC words, times, attendance and decision 8, which
   duplicate is kept, feedback answers).
+
+### Module 3: OJT (built 15 Oct 2026)
+
+- **The OJT part** (`src/server/import/ojt.ts`, `--only ojt`): 38,921 of the 38,936 OJTs. The 15 left out have no
+  real date (11 with year 0 to 9, 4 with no end date): **L&D to give each a date** (§3.1); their 69 attendance rows
+  wait with them. What the trainings part and the OJT part share (attendance, duplicates, the comparison) is now in
+  `src/server/import/attendance.ts`; the trainings part gives the same result as before.
+- **Attendance**: 304,221 of 332,029 rows. Left out, each listed by old id: 11,023 whose staff member is gone, 1,371
+  whose OJT is gone, 15,345 duplicates (decision 7; the plan's 16,791 also counted rows of deleted staff), and the
+  69 above. Blank attendance: 6,106 in 2026 are Pending; 6,438 before 2026 are Absent (decision 8). 284,322 rows bring
+  their answers (a1 what they learned, a2 and a3 the ratings before and after); most old rows have the two ratings
+  only. Rows with a clerk's id are recorded as by that clerk (283,778); the rest as by L&D (20,443), since the old rows
+  don't say whether L&D or the staff member entered them, and "by L&D" keeps staff from editing them.
+- **Hours match the old dashboard** for every year and every department once three things are set aside: the
+  duplicates (731.82 h in 2023, 3,220.6 h in 2024, 5,437.5 h in 2025, 13,237.68 h in 2026), OJTs whose dates or
+  times end before they start (the old dashboard adds them in as negative hours), and the old system's rounding of
+  each day (at most 1.42 h in a year). The old `totalman` (a row counted as several people) is 1 on every row that
+  comes across; the 19 rows where it isn't are all among those left out.
+- **What OJT the training was** (OJT, coaching or mentoring) **is blank on every imported OJT**: the old form asks
+  for it but never saves it. The OJT pages already show a blank one as "OJT".
+- **Trainer type**: EXTERNAL and INTERNAL as they are; **INHOUSE (506) is read as internal and INEXTERNAL (7) as
+  external** (older words; L&D to confirm). 20 marked "OJT" and 87 blank have no trainer type in v2.
+- **Imported as they are and listed for the clerks**: 141 OJTs dated outside 2023–2026 (1970, 2032 and so on;
+  decision 6), 55 that end before they start, 71 whose end time is at or before the start, 12 longer than 60 days,
+  13 titles cut to 200 characters, 1 with no title ("Untitled OJT (old system)"), 744 with no one on them in v2.
+  1,312 OJTs had no training code and were given one: "OJT", the start date and the old id.
+- **The organising department** is set, as v2 does when a clerk records an OJT, where everyone on it is from one
+  department (30,316 OJTs).
+- **A full run** (org chart to OJT, into an empty database) takes about 85 seconds.
+- **Tests**: 5 more unit tests (trainer type, answers, the code given, year groups).
+
+**The app with the real data.** The speed check (the services behind each page, on the imported copy, as an L&D
+admin, who sees the most) found pages written for the demo data's 19 trainings. Fixed (approved 15 Oct 2026):
+
+| Page | Before | After |
+|---|---|---|
+| Dashboard, 2026 | 1.9 s | 0.7 s |
+| Dashboard, 2023 to 2026 | 10.9 s (23 s first time) | 3.2 s |
+| Reports: staff hours, department hours (2026) | 1.7 to 1.8 s | 0.5 s |
+| Reports: training attendance, 2026 | stopped at 2,000 trainings | all 6,087, 0.5 s |
+| OJT list, any page | 2.6 s (4.2 s first time) | 0.4 s |
+| OJT export, 2026 | stopped at 20,000 of 69,739 rows | all, 2 s to read |
+| Audit export | stopped at 50,000 rows | all, up to the limit |
+
+- **The Dashboard and the hours reports** read completed attendance and the trainings as two flat queries and put
+  them together (`completedAttendance` in `services/report.ts`): loading the training inside each of 300,000 rows
+  was what took the time.
+- **The training attendance report** counts each training's people in the database (one grouped query) instead of
+  loading them, shows 100 trainings a page, and its totals row covers every training in the period.
+- **The OJT list** pages in two steps: it counts each OJT's rows, walks the OJTs newest first to those the page falls
+  on, and reads only their rows. Ordering 300,000 rows by date and then by name was what took the time.
+- **The audit and OJT exports** hold every row, read flat like the Dashboard, and their workbook is written out as it
+  is built (`streamingWorkbook` in `server/excel.ts`): a year of the audit report (104,000 lines) took 24 s and
+  840 MB of the server's memory the old way, 6 s and 150 MB this way. **Above 150,000 rows an export is refused with
+  the reason** (`EXPORT_ROW_LIMIT`, `src/lib/export.ts`): the page's button reads "Too many rows to export" and says
+  why, and the export route answers with the same words. Each single year fits; 2023 to 2026 together (311,794 lines)
+  does not.
 
 ## 7. Data model
 

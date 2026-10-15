@@ -1,8 +1,9 @@
-import ExcelJS from "exceljs";
+import type ExcelJS from "exceljs";
 import { answerCells, CURRENT_FORM, questionsOf } from "@/lib/forms/feedback";
 import { formatTime } from "@/lib/format";
 import { GENDER_LABELS } from "@/lib/validation/staff";
 import { OJT_METHOD_LABELS, OJT_TRAINER_LABELS, ojtTrainerOf } from "@/lib/validation/training";
+import { refusedExport, streamingWorkbook } from "@/server/excel";
 import { can } from "@/server/permissions";
 import { listOjtForExport } from "@/server/services/ojt";
 import { getCurrentUser } from "@/server/session";
@@ -20,13 +21,14 @@ export async function GET(request: Request) {
   if (!can(user, "ojt.manage")) return new Response("Forbidden", { status: 403 });
 
   const url = new URL(request.url);
-  const rows = await listOjtForExport(user, parseOjtFilters(Object.fromEntries(url.searchParams)));
+  const rows = await listOjtForExport(user, parseOjtFilters(Object.fromEntries(url.searchParams))).catch(refusedExport);
+  if (rows instanceof Response) return rows;
 
   const questions = questionsOf(CURRENT_FORM.OJT);
-  const wb = new ExcelJS.Workbook();
-  wb.creator = "LDMS";
+  // A year holds about 100,000 rows: the workbook is written out as it is built.
+  const { wb, file } = streamingWorkbook();
   const ws = wb.addWorksheet("OJT", { views: [{ state: "frozen", ySplit: 1 }] });
-  ws.columns = [
+  const columns: Partial<ExcelJS.Column>[] = [
     { header: "No", key: "no", width: 6 },
     { header: "Training Code", key: "code", width: 19 },
     { header: "Staff No", key: "staffNo", width: 11 },
@@ -50,8 +52,9 @@ export async function GET(request: Request) {
     // The questions as the form asks them, one column each.
     ...questions.map((q) => ({ header: q.text, key: q.id, width: 40 })),
   ];
+  ws.columns = columns;
   ws.getRow(1).font = { bold: true };
-  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: ws.columns.length } };
+  ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } };
   rows.forEach((r, i) => {
     const t = r.training;
     const trainer = ojtTrainerOf(t.program);
@@ -78,12 +81,13 @@ export async function GET(request: Request) {
       answered: r.submittedAt,
       source: SOURCE_LABELS[r.source],
       ...Object.fromEntries(answerCells("OJT", r.feedbackVersion, r.feedback).map((cell, n) => [questions[n].id, cell])),
-    });
+    }).commit();
   });
+  ws.commit();
 
   const stamp = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-  const buffer = await wb.xlsx.writeBuffer();
-  return new Response(buffer as ArrayBuffer, {
+  const buffer = await file();
+  return new Response(buffer, {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       "Content-Disposition": `attachment; filename="LDMS OJT ${stamp}.xlsx"`,

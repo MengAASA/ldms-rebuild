@@ -1,5 +1,6 @@
 import "server-only";
 import type { Prisma } from "@prisma/client";
+import { exportBlock } from "@/lib/export";
 import { formatDateRange, formatTime, plural } from "@/lib/format";
 import type { OjtEntryDetails } from "@/lib/validation/ojt";
 import { db } from "../db";
@@ -36,16 +37,21 @@ function scopeOf(user: SessionUser): Prisma.StaffWhereInput {
   return scope;
 }
 
+/** The OJTs the dates filter keeps. */
+function ojtTrainingWhere(f: OjtFilters): Prisma.TrainingWhereInput {
+  return {
+    type: "OJT",
+    ...(f.from ? { startDate: { gte: new Date(`${f.from}T00:00:00Z`) } } : {}),
+    ...(f.to ? { endDate: { lte: new Date(`${f.to}T00:00:00Z`) } } : {}),
+  };
+}
+
 /** Which rows the list and its export show: the user's staff, and the filters. */
 function ojtWhere(user: SessionUser, f: OjtFilters): Prisma.ParticipantWhereInput {
   const scope = scopeOf(user);
   const q = f.q?.trim();
   return {
-    training: {
-      type: "OJT",
-      ...(f.from ? { startDate: { gte: new Date(`${f.from}T00:00:00Z`) } } : {}),
-      ...(f.to ? { endDate: { lte: new Date(`${f.to}T00:00:00Z`) } } : {}),
-    },
+    training: ojtTrainingWhere(f),
     staff: { ...scope, ...(f.departmentId ? { departmentId: f.departmentId } : {}) },
     ...(q
       ? {
@@ -97,23 +103,65 @@ const withHours = <P extends Prisma.ParticipantGetPayload<{ select: typeof ojtRo
 export async function listOjt(user: SessionUser, f: OjtFilters) {
   const where = ojtWhere(user, f);
   const page = Math.max(1, f.page ?? 1);
-  const [rows, total] = await Promise.all([
-    db.participant.findMany({ where, orderBy: ojtOrder, skip: (page - 1) * OJT_PAGE_SIZE, take: OJT_PAGE_SIZE, select: ojtRowSelect }),
-    db.participant.count({ where }),
+  // In two steps: putting 300,000 rows in order by their OJT's date and then by name takes seconds. So count each
+  // OJT's rows, walk the OJTs newest first to those the page falls on, and read and order only their rows.
+  const [groups, ojts] = await Promise.all([
+    db.participant.groupBy({ by: ["trainingId"], where, _count: { _all: true } }),
+    db.training.findMany({ where: ojtTrainingWhere(f), select: { id: true, startDate: true } }),
   ]);
-  return { rows: rows.map(withHours), total, page, pages: Math.max(1, Math.ceil(total / OJT_PAGE_SIZE)) };
+  const rowsOn = new Map(groups.map((g) => [g.trainingId, g._count._all]));
+  const newestFirst = ojts.filter((t) => rowsOn.has(t.id)).sort((a, b) => b.startDate.getTime() - a.startDate.getTime() || b.id - a.id);
+  const total = groups.reduce((a, g) => a + g._count._all, 0);
+  const skip = (page - 1) * OJT_PAGE_SIZE;
+  const onPage: number[] = [];
+  let before = 0; // rows on the OJTs ahead of the first one read
+  let seen = 0;
+  for (const t of newestFirst) {
+    const n = rowsOn.get(t.id)!;
+    if (seen + n > skip) onPage.push(t.id);
+    else before += n;
+    seen += n;
+    if (seen >= skip + OJT_PAGE_SIZE) break;
+  }
+  const rows = onPage.length
+    ? await db.participant.findMany({ where: { AND: [where, { trainingId: { in: onPage } }] }, orderBy: ojtOrder, select: ojtRowSelect })
+    : [];
+  return {
+    rows: rows.slice(skip - before, skip - before + OJT_PAGE_SIZE).map(withHours),
+    total,
+    page,
+    pages: Math.max(1, Math.ceil(total / OJT_PAGE_SIZE)),
+  };
 }
 
-/** Every row the filters match (not just one page), for the Excel export. */
+/**
+ * Every row the filters match (not just one page), for the Excel export, with
+ * each person's answers, which the old OJT audit report listed. Refused
+ * (UserError) when that is more than one export can hold. The rows, their staff
+ * and their OJTs are read flat and put together here, in the list's order.
+ */
 export async function listOjtForExport(user: SessionUser, f: OjtFilters) {
-  // With each person's answers, which the old OJT audit report listed.
-  const rows = await db.participant.findMany({
-    where: ojtWhere(user, f),
-    orderBy: ojtOrder,
-    take: 20_000,
-    select: { ...ojtRowSelect, staff: { select: { ...ojtRowSelect.staff.select, gender: true } }, feedback: true, feedbackVersion: true },
-  });
-  return rows.map((r) => ({ ...withHours(r), gender: r.staff.gender, feedback: r.feedback, feedbackVersion: r.feedbackVersion }));
+  const where = ojtWhere(user, f);
+  const block = exportBlock(await db.participant.count({ where }));
+  if (block) throw new UserError(block);
+
+  const { staff: staffSelect, training: trainingSelect, ...own } = ojtRowSelect;
+  const rows = await db.participant.findMany({ where, select: { ...own, feedback: true, feedbackVersion: true, staffId: true, trainingId: true } });
+  const [staff, ojts] = await Promise.all([
+    db.staff.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.staffId))] } }, select: { ...staffSelect.select, gender: true } }),
+    db.training.findMany({ where: ojtTrainingWhere(f), select: trainingSelect.select }),
+  ]);
+  const staffOf = new Map(staff.map((s) => [s.id, s]));
+  const ojtOf = new Map(ojts.map((t) => [t.id, t]));
+  const joined = rows.map(({ staffId, trainingId, ...r }) => ({ ...r, staff: staffOf.get(staffId)!, training: ojtOf.get(trainingId)! }));
+  // ojtOrder: newest OJT first, then by name.
+  joined.sort(
+    (a, b) =>
+      b.training.startDate.getTime() - a.training.startDate.getTime() ||
+      b.training.id - a.training.id ||
+      a.staff.name.localeCompare(b.staff.name, "en", { sensitivity: "base" }),
+  );
+  return joined.map((r) => ({ ...withHours(r), gender: r.staff.gender }));
 }
 
 export type OjtListRow = Awaited<ReturnType<typeof listOjt>>["rows"][number];

@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { FileDown, FileUp, Plus } from "lucide-react";
+import { FileUp, Plus } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { DateRangeFilter } from "@/components/ui/DateRangeFilter";
 import { Select } from "@/components/ui/Select";
 import { ClickableRow } from "@/components/ui/ClickableRow";
 import { Status } from "@/components/ui/Status";
+import { ExportButton } from "@/components/ExportButton";
 import { withBasePath } from "@/lib/base-path";
 import { formatDate, formatHours, plural } from "@/lib/format";
 import { isAdmin } from "@/server/permissions";
@@ -41,9 +42,7 @@ export default async function OjtPage({ searchParams }: PageProps<"/ojt">) {
         }
         actions={
           <>
-            <a href={withBasePath(`/ojt/export${ojtFiltersToQuery(f)}`)} className="btn">
-              <FileDown size={15} aria-hidden /> Export to Excel
-            </a>
+            <ExportButton href={`/ojt/export${ojtFiltersToQuery(f)}`} rows={total} />
             <Link href="/ojt/import" className="btn">
               <FileUp size={15} aria-hidden /> Import from Excel
             </Link>

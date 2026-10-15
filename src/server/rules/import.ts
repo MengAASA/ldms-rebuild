@@ -52,13 +52,14 @@ export function isReadOnlySql(sql: string): boolean {
 
 // Each part needs the ones before it (attendance needs staff, staff need
 // departments), so running one part also empties and reloads those after it.
-export const IMPORT_PARTS = ["org", "staff", "training"] as const;
+export const IMPORT_PARTS = ["org", "staff", "training", "ojt"] as const;
 export type ImportPart = (typeof IMPORT_PARTS)[number];
 
 export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
   org: "Divisions, departments and sections",
   staff: "Staff, roles, HODs and division heads",
   training: "Trainings, attendance and course feedback",
+  ojt: "OJT, attendance and answers",
 };
 
 /** The parts a run covers: all of them, or the one asked for and those that depend on it. */
@@ -190,12 +191,13 @@ export function mapOldRoles(roletype: unknown, usertype: unknown): OldRoles {
 }
 
 /**
- * Whether a person must choose a new password the first time they sign in to
- * v2: yes when their old password is one that others have too. Nearly all
+ * Whether a person's old password is one that others have too. Nearly all
  * staff are still on the password they were given, which anyone could use
- * with someone else's staff number.
+ * with someone else's staff number. They keep it all the same: no one is made
+ * to choose a new one (decided 15 Oct 2026). Those it matters most for, people
+ * with a role or who head a department or division, are listed for L&D.
  */
-export function mustChangeOldPassword(peopleWithThisPassword: number): boolean {
+export function oldPasswordShared(peopleWithThisPassword: number): boolean {
   return peopleWithThisPassword > 1;
 }
 
@@ -223,6 +225,10 @@ function mapWord<T>(map: Record<string, T>, raw: unknown): Mapped<T> {
   if (!k) return { value: null, known: true };
   return k in map ? { value: map[k], known: true } : { value: null, known: false };
 }
+
+/** The year a training is counted under in the comparison: 2023 to 2026 each on their own, any other (an impossible date) together. */
+export const COMPARED_YEARS = [2023, 2024, 2025, 2026] as const;
+export const yearBucket = (year: number) => ((COMPARED_YEARS as readonly number[]).includes(year) ? String(year) : "other years");
 
 /** `EXT`, `INTX`, `INTI` → external public, internal by an external trainer, internal by an internal trainer. */
 export const mapProgram = (raw: unknown) => mapWord<NewProgram>(PROGRAM_MAP, raw);
@@ -275,14 +281,45 @@ export function keptDuplicate<R extends { id: number; completed: boolean; hasFee
   return rows.reduce((best, r) => (rank(r) > rank(best) || (rank(r) === rank(best) && r.id < best.id) ? r : best));
 }
 
-// ---------- Course feedback ----------
+// ---------- Answers: course feedback and OJT ----------
 
-const RATINGS = ["q1", "q2", "q3", "q4", "q5", "q6", "q7", "q8", "q9", "q10", "q11"] as const;
-const WRITTEN = ["q13", "q14", "q15", "q16"] as const;
-/** The longest written answer v2 keeps (MAX_ANSWER on the form). */
+/** The longest written answer v2 keeps (MAX_ANSWER on the forms). */
 export const MAX_WRITTEN_ANSWER = 1000;
 
-export type OldFeedback = Partial<Record<(typeof RATINGS)[number] | "q12" | (typeof WRITTEN)[number], unknown>>;
+export type MappedAnswers = { answers: Record<string, number | string | null> | null; odd: string[] };
+
+/** Builds a set of answers one question at a time; `done` gives null when nothing was answered. */
+function answerSet() {
+  const answers: Record<string, number | string | null> = {};
+  const odd: string[] = [];
+  let given = 0;
+  const put = (id: string, value: number | string | null) => {
+    answers[id] = value;
+    if (value !== null) given++;
+  };
+  return {
+    /** A 1–5 rating; anything else is left blank and listed. */
+    rating(id: string, oldName: string, raw: unknown) {
+      const s = raw == null ? "" : String(raw).trim();
+      put(id, /^[1-5]$/.test(s) ? Number(s) : null);
+      if (s && answers[id] === null) odd.push(`${oldName} "${s}"`);
+    },
+    yesNo(id: string, oldName: string, raw: unknown) {
+      const s = key(raw);
+      put(id, s === "YES" || s === "NO" ? s : null);
+      if (s && answers[id] === null) odd.push(`${oldName} "${String(raw).trim()}"`);
+    },
+    /** A written answer, trimmed with its line breaks kept, cut to what the form allows. */
+    written(id: string, oldName: string, raw: unknown) {
+      const s = typeof raw === "string" ? raw.trim() : "";
+      put(id, s ? s.slice(0, MAX_WRITTEN_ANSWER) : null);
+      if (s.length > MAX_WRITTEN_ANSWER) odd.push(`${oldName} cut to ${MAX_WRITTEN_ANSWER} characters`);
+    },
+    done: (): MappedAnswers => ({ answers: given ? answers : null, odd }),
+  };
+}
+
+export type OldFeedback = Partial<Record<`q${number}`, unknown>>;
 
 /**
  * The old `q1`–`q16` as the course feedback form stores its answers: ratings
@@ -291,25 +328,48 @@ export type OldFeedback = Partial<Record<(typeof RATINGS)[number] | "q12" | (typ
  * answer that doesn't fit its question (left blank) or a written one that was
  * cut to fit.
  */
-export function mapFeedback(row: OldFeedback): { answers: Record<string, number | string | null> | null; odd: string[] } {
-  const answers: Record<string, number | string | null> = {};
-  const odd: string[] = [];
-  let given = 0;
-  for (const q of RATINGS) {
-    const s = typeof row[q] === "string" ? (row[q] as string).trim() : row[q] == null ? "" : String(row[q]);
-    answers[q] = /^[1-5]$/.test(s) ? Number(s) : null;
-    if (s && answers[q] === null) odd.push(`${q} "${s}"`);
-    if (answers[q] !== null) given++;
-  }
-  const yn = key(row.q12);
-  answers.q12 = yn === "YES" || yn === "NO" ? yn : null;
-  if (yn && answers.q12 === null) odd.push(`q12 "${String(row.q12).trim()}"`);
-  if (answers.q12 !== null) given++;
-  for (const q of WRITTEN) {
-    const s = typeof row[q] === "string" ? (row[q] as string).trim() : "";
-    answers[q] = s ? s.slice(0, MAX_WRITTEN_ANSWER) : null;
-    if (s.length > MAX_WRITTEN_ANSWER) odd.push(`${q} cut to ${MAX_WRITTEN_ANSWER} characters`);
-    if (s) given++;
-  }
-  return { answers: given ? answers : null, odd };
+export function mapFeedback(row: OldFeedback): MappedAnswers {
+  const set = answerSet();
+  for (let n = 1; n <= 11; n++) set.rating(`q${n}`, `q${n}`, row[`q${n}`]);
+  set.yesNo("q12", "q12", row.q12);
+  for (let n = 13; n <= 16; n++) set.written(`q${n}`, `q${n}`, row[`q${n}`]);
+  return set.done();
+}
+
+/**
+ * The old OJT answers as the OJT form stores them: `q1` (what they learned)
+ * as a1, and the ratings before and after, `q2` and `q3`, as a2 and a3. The
+ * old system kept the written answer in capitals; it stays as it is.
+ */
+export function mapOjtAnswers(row: OldFeedback): MappedAnswers {
+  const set = answerSet();
+  set.written("a1", "q1", row.q1);
+  set.rating("a2", "q2", row.q2);
+  set.rating("a3", "q3", row.q3);
+  return set.done();
+}
+
+// ---------- OJT ----------
+
+/**
+ * The old OJT trainer type as v2 keeps it: the program, external or internal
+ * trainer. The old form offers only EXTERNAL and INTERNAL; INHOUSE and
+ * INEXTERNAL are older words, read as internal and external. Any other word
+ * (the old OJT rows also hold "OJT") has no mapping.
+ */
+const OJT_TRAINER_MAP: Record<string, NewProgram> = {
+  EXTERNAL: "INTERNAL_EXTERNAL_TRAINER",
+  INEXTERNAL: "INTERNAL_EXTERNAL_TRAINER",
+  INTERNAL: "INTERNAL_INTERNAL_TRAINER",
+  INHOUSE: "INTERNAL_INTERNAL_TRAINER",
+};
+export const mapOjtTrainer = (raw: unknown) => mapWord<NewProgram>(OJT_TRAINER_MAP, raw);
+
+/**
+ * A training code for an OJT the old system gave none: "OJT", its start date
+ * (YYYYMMDD) and its old id in 6 digits. It has the shape of the codes v2
+ * gives, and the old id keeps it unique.
+ */
+export function oldOjtCode(startDate: Date, oldId: number): string {
+  return `OJT${startDate.toISOString().slice(0, 10).replaceAll("-", "")}${String(oldId).padStart(6, "0")}`;
 }

@@ -1,5 +1,6 @@
 import "server-only";
 import type { Prisma, TrainingType } from "@prisma/client";
+import { exportBlock } from "@/lib/export";
 import { db } from "../db";
 import { UserError } from "../errors";
 import { isAdmin, reportDepartmentScope, reportStaffScope, staffViewScope, type SessionUser } from "../permissions";
@@ -28,6 +29,8 @@ export type ReportFilters = {
 };
 
 export const AUDIT_PAGE_SIZE = 100;
+/** Trainings per page of the training attendance report; its totals cover them all. */
+export const ATTENDANCE_PAGE_SIZE = 100;
 
 function scopes(user: SessionUser) {
   ensure(user, "report.view");
@@ -61,6 +64,22 @@ export const hoursSelect = {
   sessions: { select: { date: true, startTime: true, endTime: true } },
 } satisfies Prisma.TrainingSelect;
 
+/**
+ * Completed attendance of the given staff on trainings that started in the
+ * period and went ahead, each with its training. Two flat queries joined
+ * here: with the real data (300,000 rows) loading the training inside every
+ * row takes five times as long.
+ */
+export async function completedAttendance(staff: Prisma.StaffWhereInput, period: { from: string; to: string }) {
+  const going: Prisma.TrainingWhereInput = { status: "SCHEDULED", ...startsIn(period) };
+  const [rows, trainings] = await Promise.all([
+    db.participant.findMany({ where: { attendance: "COMPLETED", staff, training: going }, select: { staffId: true, trainingId: true } }),
+    db.training.findMany({ where: going, select: { id: true, type: true, title: true, trainingCode: true, ...hoursSelect } }),
+  ]);
+  const byId = new Map(trainings.map((t) => [t.id, t]));
+  return rows.map((r) => ({ staffId: r.staffId, training: byId.get(r.trainingId)! }));
+}
+
 /** Departments (with their divisions) the user's reports cover, for the filters. */
 export async function reportDepartments(user: SessionUser) {
   return db.department.findMany({
@@ -89,10 +108,7 @@ async function staffRows(user: SessionUser, f: ReportFilters, period: { from: st
         section: { select: { name: true } },
       },
     }),
-    db.participant.findMany({
-      where: { attendance: "COMPLETED", staff: where, training: { status: "SCHEDULED", ...startsIn(period) } },
-      select: { staffId: true, training: { select: hoursSelect } },
-    }),
+    completedAttendance(where, period),
   ]);
   const totals = staffTotals(done.map((p) => ({ staffId: p.staffId, hours: trainingHours(p.training) ?? 0 })));
   return staff.filter((s) => inStaffReport(s, totals.get(s.id))).map((s) => ({ ...s, ...(totals.get(s.id) ?? { completed: 0, hours: 0 }) }));
@@ -150,28 +166,34 @@ export async function trainingAttendanceReport(user: SessionUser, f: ReportFilte
   const staff = staffWhere(user, f, false);
   const q = f.q?.trim();
   const narrowed = !isAdmin(user) || !!f.departmentId || !!f.divisionId;
-  const trainings = await db.training.findMany({
-    where: {
-      ...startsIn(period),
-      ...(f.type ? { type: f.type } : {}),
-      ...(q ? { OR: [{ title: { contains: q } }, { trainingCode: { contains: q } }] } : {}),
-      ...(narrowed ? { participants: { some: { staff } } } : {}),
-    },
-    orderBy: [{ startDate: "desc" }, { id: "desc" }],
-    take: 2000,
-    select: {
-      id: true,
-      trainingCode: true,
-      title: true,
-      type: true,
-      certificateFile: true,
-      ...hoursSelect,
-      participants: { where: { staff }, select: { attendance: true } },
-    },
-  });
-  const rows = trainings.map(({ participants, certificateFile, ...t }) => {
+  const trainingWhere: Prisma.TrainingWhereInput = {
+    ...startsIn(period),
+    ...(f.type ? { type: f.type } : {}),
+    ...(q ? { OR: [{ title: { contains: q } }, { trainingCode: { contains: q } }] } : {}),
+  };
+  // Every training in the period (a year holds thousands with the OJTs), and its people counted by the database.
+  const [trainings, groups] = await Promise.all([
+    db.training.findMany({
+      where: trainingWhere,
+      orderBy: [{ startDate: "desc" }, { id: "desc" }],
+      select: { id: true, trainingCode: true, title: true, type: true, certificateFile: true, ...hoursSelect },
+    }),
+    db.participant.groupBy({ by: ["trainingId", "attendance"], where: { staff, training: trainingWhere }, _count: { _all: true } }),
+  ]);
+  const countsOf = new Map<number, ReturnType<typeof attendanceCounts>>();
+  for (const g of groups) {
+    const c = countsOf.get(g.trainingId) ?? attendanceCounts([]);
+    c.total += g._count._all;
+    if (g.attendance === "COMPLETED") c.completed += g._count._all;
+    else if (g.attendance === "PENDING") c.pending += g._count._all;
+    else c.absent += g._count._all;
+    countsOf.set(g.trainingId, c);
+  }
+  // L&D see every training; anyone narrowed to some staff, those with any of them on it.
+  const rows = trainings.flatMap(({ certificateFile, ...t }) => {
+    const counts = countsOf.get(t.id) ?? attendanceCounts([]);
+    if (narrowed && !counts.total) return [];
     const hours = trainingHours(t);
-    const counts = attendanceCounts(participants);
     return {
       ...t,
       hours,
@@ -278,7 +300,9 @@ const auditSelect = {
   feedback: true,
   feedbackVersion: true,
   staff: { select: { id: true, staffNo: true, name: true, gender: true, designation: true, department: { select: { name: true } } } },
-  training: { select: { id: true, trainingCode: true, title: true, type: true, venue: true, program: true, trainerName: true, certificateFile: true, ...hoursSelect } },
+  training: {
+    select: { id: true, trainingCode: true, title: true, type: true, venue: true, program: true, trainerName: true, certificateFile: true, ...hoursSelect },
+  },
 } satisfies Prisma.ParticipantSelect;
 
 function auditRow(p: Prisma.ParticipantGetPayload<{ select: typeof auditSelect }>, today: Date) {
@@ -314,11 +338,37 @@ export async function auditReport(user: SessionUser, f: ReportFilters, today: Da
   };
 }
 
-/** Every line the filters match, for the Excel export. */
+/**
+ * Every line the filters match, for the Excel export; refused (UserError) when
+ * that is more than one export can hold. The rows, their staff and their
+ * trainings are read flat and put together here, in the report's order: a
+ * year's lines run to 100,000 with the OJTs.
+ */
 export async function auditReportForExport(user: SessionUser, f: ReportFilters, today: Date) {
   const period = reportPeriod(f.from, f.to, today);
-  const rows = await db.participant.findMany({ where: auditWhere(user, f, period), orderBy: auditOrder, take: 50_000, select: auditSelect });
-  return { period, rows: rows.map((p) => auditRow(p, today)) };
+  const where = auditWhere(user, f, period);
+  const block = exportBlock(await db.participant.count({ where }));
+  if (block) throw new UserError(block);
+
+  const { staff: staffSelect, training: trainingSelect, ...own } = auditSelect;
+  const rows = await db.participant.findMany({ where, select: { ...own, staffId: true, trainingId: true } });
+  const [staff, trainings] = await Promise.all([
+    db.staff.findMany({ where: { id: { in: [...new Set(rows.map((r) => r.staffId))] } }, select: { ...staffSelect.select, id: true } }),
+    // Every training in the period (a superset of those on the rows): cheaper than naming tens of thousands by id.
+    db.training.findMany({ where: { ...startsIn(period), ...(f.type ? { type: f.type } : {}) }, select: trainingSelect.select }),
+  ]);
+  const staffOf = new Map(staff.map((s) => [s.id, s]));
+  const trainingOf = new Map(trainings.map((t) => [t.id, t]));
+  const joined = rows.map(({ staffId, trainingId, ...p }) => ({ ...p, staff: staffOf.get(staffId)!, training: trainingOf.get(trainingId)! }));
+  // auditOrder: training start date, training, staff name, row.
+  joined.sort(
+    (a, b) =>
+      a.training.startDate.getTime() - b.training.startDate.getTime() ||
+      a.training.id - b.training.id ||
+      a.staff.name.localeCompare(b.staff.name, "en", { sensitivity: "base" }) ||
+      a.id - b.id,
+  );
+  return { period, rows: joined.map((p) => auditRow(p, today)) };
 }
 
 // ---------- One person's history (the staff record) ----------

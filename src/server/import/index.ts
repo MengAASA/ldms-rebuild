@@ -9,6 +9,7 @@ import {
   importTargetBlock,
   partsToRun,
 } from "../rules/import";
+import { importOjt } from "./ojt";
 import { importOrg } from "./org";
 import { writeReport } from "./report";
 import { ImportRun } from "./run";
@@ -23,6 +24,7 @@ const PARTS: Record<ImportPart, (run: ImportRun) => Promise<void>> = {
   org: importOrg,
   staff: importStaff,
   training: importTrainings,
+  ojt: importOjt,
 };
 
 /** A reason a person can act on; thrown for anything that stops the run before it writes. */
@@ -54,12 +56,14 @@ async function empty(db: PrismaClient, from: ImportPart) {
   await db.skillTopic.deleteMany();
   await db.skillEvaluation.deleteMany();
   await db.pme.deleteMany();
-  await db.participant.deleteMany();
-  await db.trainingSession.deleteMany();
-  await db.training.deleteMany();
+  // Running only the OJT part keeps the other trainings.
+  const trainings = from === "ojt" ? { type: "OJT" as const } : {};
+  await db.participant.deleteMany({ where: { training: trainings } });
+  await db.trainingSession.deleteMany({ where: { training: trainings } });
+  await db.training.deleteMany({ where: trainings });
   // The import's own entries for the parts that stay are kept; everything else in the log goes.
   await db.auditLog.deleteMany({ where: { NOT: { entity: "Import", entityId: { in: IMPORT_PARTS.slice(0, IMPORT_PARTS.indexOf(from)) } } } });
-  if (from === "training") return;
+  if (from === "training" || from === "ojt") return;
   await db.staffRole.deleteMany();
   await db.department.updateMany({ data: { hodId: null } });
   await db.division.updateMany({ data: { headId: null } });
@@ -106,7 +110,7 @@ export async function runImport(env: { old?: string; target?: string; app?: stri
       await PARTS[part](run);
       if (!options.checkOnly) {
         const mine = run.counts.filter((c) => c.part === part).slice(0, 3); // the headline figures; the rest are in the report
-        const summary = `Imported from the old system: ${mine.map((c) => `${c.imported} ${c.what.toLowerCase()}`).join(", ")}`;
+        const summary = `Imported from the old system: ${mine.map((c) => `${c.imported} ${/^[A-Z][a-z]/.test(c.what) ? c.what.toLowerCase() : c.what}`).join(", ")}`;
         await run.target.auditLog.create({ data: { action: "IMPORT", entity: "Import", entityId: part, summary: summary.slice(0, 255) } });
       }
     }

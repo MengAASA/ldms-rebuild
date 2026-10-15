@@ -33,7 +33,7 @@ export default async function AuditReportPage({ searchParams }: PageProps<"/repo
             <PeriodLabel period={period} />
           </>
         }
-        actions={<ExportLink report="audit" f={f} />}
+        actions={<ExportLink report="audit" f={f} rows={total} />}
       />
       <ReportTabs current="audit" f={f} />
       <ReportFilterBar report="audit" f={f} period={period} departments={departments} search="Training, code, name or staff no." type department />

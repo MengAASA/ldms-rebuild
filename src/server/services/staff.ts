@@ -316,7 +316,9 @@ export async function changeOwnPassword(user: SessionUser, current: string, next
     throw new UserError("Your current password is not correct.", { current: ["Not correct"] });
   const problems = passwordProblems(next, staff.staffNo);
   if (problems.length) throw new UserError("Choose a stronger password.", { next: problems });
-  if (await verify(staff.passwordHash, next)) throw new UserError("Use a password you haven't used here before.", { next: ["Same as the current password"] });
+  // The same password again is allowed (decided 15 Oct 2026), except in place of a temporary one L&D set: they know it.
+  if (staff.mustChangePassword && (await verify(staff.passwordHash, next)))
+    throw new UserError("Choose your own password, not the temporary one L&D gave you.", { next: ["Same as the temporary password"] });
   const passwordHash = await hash(next);
   await db.$transaction(async (tx) => {
     await tx.staff.update({ where: { id: user.id }, data: { passwordHash, mustChangePassword: false, sessionVersion: { increment: 1 } } });

@@ -18,13 +18,17 @@ import {
   mapGender,
   mapHrdc,
   mapJobGrade,
+  mapOjtAnswers,
+  mapOjtTrainer,
   mapOldRoles,
   mapPlatform,
   mapProgram,
   mapStaffStatus,
-  mustChangeOldPassword,
   NOT_COMPLETED_REASON,
+  oldOjtCode,
+  oldPasswordShared,
   partsToRun,
+  yearBucket,
 } from "@/server/rules/import";
 
 const OLD = "mysql://reader:secret@localhost:3306/old_ldms";
@@ -87,12 +91,13 @@ describe("the old database is only read", () => {
 
 describe("the parts of the import", () => {
   it("runs every part when none is named", () => {
-    expect(partsToRun(undefined)).toEqual(["org", "staff", "training"]);
+    expect(partsToRun(undefined)).toEqual(["org", "staff", "training", "ojt"]);
   });
   it("runs the named part and those that depend on it", () => {
-    expect(partsToRun("org")).toEqual(["org", "staff", "training"]);
-    expect(partsToRun("staff")).toEqual(["staff", "training"]);
-    expect(partsToRun("training")).toEqual(["training"]);
+    expect(partsToRun("org")).toEqual(["org", "staff", "training", "ojt"]);
+    expect(partsToRun("staff")).toEqual(["staff", "training", "ojt"]);
+    expect(partsToRun("training")).toEqual(["training", "ojt"]);
+    expect(partsToRun("ojt")).toEqual(["ojt"]);
   });
   it("doesn't know a made-up part", () => {
     expect(partsToRun("everything")).toBeNull();
@@ -200,12 +205,12 @@ describe("old roles", () => {
 });
 
 describe("old passwords", () => {
-  it("must be changed at first sign-in when others have the same one", () => {
-    expect(mustChangeOldPassword(2938)).toBe(true);
-    expect(mustChangeOldPassword(2)).toBe(true);
+  it("are shared when others have the same one", () => {
+    expect(oldPasswordShared(2938)).toBe(true);
+    expect(oldPasswordShared(2)).toBe(true);
   });
-  it("may be kept when it is the person's own", () => {
-    expect(mustChangeOldPassword(1)).toBe(false);
+  it("are the person's own when no one else has it", () => {
+    expect(oldPasswordShared(1)).toBe(false);
   });
 });
 
@@ -285,5 +290,32 @@ describe("old course feedback", () => {
     const { answers, odd } = mapFeedback({ q13: "x".repeat(1200) });
     expect((answers?.q13 as string).length).toBe(1000);
     expect(odd).toEqual(["q13 cut to 1000 characters"]);
+  });
+});
+
+describe("old OJT", () => {
+  it("reads the trainer type as external or internal, older words too", () => {
+    expect(mapOjtTrainer("EXTERNAL")).toEqual({ value: "INTERNAL_EXTERNAL_TRAINER", known: true });
+    expect(mapOjtTrainer("INEXTERNAL")).toEqual({ value: "INTERNAL_EXTERNAL_TRAINER", known: true });
+    expect(mapOjtTrainer("internal")).toEqual({ value: "INTERNAL_INTERNAL_TRAINER", known: true });
+    expect(mapOjtTrainer("INHOUSE")).toEqual({ value: "INTERNAL_INTERNAL_TRAINER", known: true });
+  });
+  it("leaves a blank trainer type blank, and doesn't guess at OJT", () => {
+    expect(mapOjtTrainer("")).toEqual({ value: null, known: true });
+    expect(mapOjtTrainer("OJT")).toEqual({ value: null, known: false });
+  });
+  it("puts the three answers where the OJT form keeps them", () => {
+    expect(mapOjtAnswers({ q1: " WELDING SAFETY ", q2: "2", q3: "4" })).toEqual({ answers: { a1: "WELDING SAFETY", a2: 2, a3: 4 }, odd: [] });
+    expect(mapOjtAnswers({ q1: "", q2: "3", q3: null })).toEqual({ answers: { a1: null, a2: 3, a3: null }, odd: [] });
+    expect(mapOjtAnswers({ q1: null, q2: "", q3: "" })).toEqual({ answers: null, odd: [] });
+    expect(mapOjtAnswers({ q2: "9" })).toEqual({ answers: null, odd: ['q2 "9"'] });
+  });
+  it("gives an OJT with no code one shaped like v2's, from its start date and old id", () => {
+    expect(oldOjtCode(new Date("2024-03-05T00:00:00Z"), 4195)).toBe("OJT20240305004195");
+  });
+  it("compares 2023 to 2026 year by year and other years together", () => {
+    expect(yearBucket(2024)).toBe("2024");
+    expect(yearBucket(1970)).toBe("other years");
+    expect(yearBucket(2032)).toBe("other years");
   });
 });

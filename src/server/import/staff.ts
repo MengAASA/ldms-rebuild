@@ -12,7 +12,7 @@ import {
   mapJobGrade,
   mapOldRoles,
   mapStaffStatus,
-  mustChangeOldPassword,
+  oldPasswordShared,
 } from "../rules/import";
 import type { ImportRun } from "./run";
 
@@ -132,7 +132,6 @@ export async function importStaff(run: ImportRun) {
       // "Office" marks a non-executive who fills in their own TNA; executives and managers always do.
       fillsOwnTna: old.fillsOwnTna && designation === "NON_EXECUTIVE",
       legacyMd5: md5,
-      mustChangePassword: md5 !== null && mustChangeOldPassword(sharing.get(md5) ?? 0),
       oldDepartmentId,
       oldSectionId,
     });
@@ -160,6 +159,23 @@ export async function importStaff(run: ImportRun) {
   for (const u of users)
     if (mapOldRoles(u.roletype, u.usertype).markedHod && !hodIds.has(u.id) && byOldId.has(u.id))
       run.issue(P, "Marked HOD in the old system but heads no department: not a HOD in v2", "user", u.id, resigned(u) ? "resigned" : "active");
+
+  // Everyone keeps their old password, shared or not. Where someone can approve or change others' records,
+  // L&D may want to ask them to choose their own.
+  const headOf = new Map<number, string[]>();
+  for (const h of hods) headOf.set(h.who, [...(headOf.get(h.who) ?? []), "HOD"]);
+  for (const h of divisionHeads) headOf.set(h.who, [...(headOf.get(h.who) ?? []), "division head"]);
+  for (const r of rows) {
+    const what = [...(roles.get(r.legacyId) ?? []), ...(headOf.get(r.legacyId) ?? [])];
+    if (what.length && r.legacyMd5 && oldPasswordShared(sharing.get(r.legacyMd5) ?? 0))
+      run.issue(
+        P,
+        "Has a role or heads a department, and keeps the shared old password: anyone who knows it can sign in as them",
+        "user",
+        r.legacyId,
+        [...new Set(what)].join(", "),
+      );
+  }
 
   const db = run.target;
   const holdingCount = rows.filter((r) => r.oldDepartmentId === null).length;
@@ -297,14 +313,15 @@ export async function importStaff(run: ImportRun) {
     "Old passwords carried",
     notResigned.length,
     await v2({ legacyMd5: { not: null } }, (r) => !!r.legacyMd5),
-    "active staff only; replaced at first sign-in",
+    "active staff only; the same password, stored the modern way at first sign-in",
   );
+  const shared = [...sharing].filter(([, c]) => oldPasswordShared(c)).map(([md5]) => md5);
   run.count(
     P,
-    "Must choose a new password",
-    [...sharing.values()].filter((c) => c > 1).reduce((a, b) => a + b, 0),
-    await v2({ mustChangePassword: true }, (r) => !!r.mustChangePassword),
-    "their old password is one that others have too",
+    "Old password shared with others",
+    [...sharing.values()].filter(oldPasswordShared).reduce((a, b) => a + b, 0),
+    await v2({ legacyMd5: { in: shared } }, (r) => !!r.legacyMd5 && shared.includes(r.legacyMd5)),
+    "they keep it (decided 15 Oct 2026): anyone who knows it can sign in as them",
   );
   run.count(
     P,

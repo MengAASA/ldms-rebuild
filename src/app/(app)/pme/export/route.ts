@@ -76,7 +76,7 @@ export async function GET(request: Request) {
           [`${q.id}_remarks`, a?.[q.id].remarks ?? ""],
         ]),
       ),
-      ojt: a ? (a.ojtConducted ? "Yes" : "No") : "",
+      ojt: a && a.ojtConducted !== null ? (a.ojtConducted ? "Yes" : "No") : "",
       total: a && r.mark ? r.mark.total : null,
       average: a && r.mark ? r.mark.average : null,
       evaluated: a ? r.evaluatedAt : null,

@@ -11,6 +11,7 @@ import {
   isDeletedDepartment,
   isReadOnlySql,
   keptDuplicate,
+  keptPme,
   mapAttendance,
   mapDesignation,
   mapFeedback,
@@ -20,6 +21,8 @@ import {
   mapJobGrade,
   mapOjtAnswers,
   mapOjtTrainer,
+  mapPmeAnswers,
+  mapPmeStatus,
   mapOldRoles,
   mapPlatform,
   mapProgram,
@@ -28,6 +31,7 @@ import {
   oldOjtCode,
   oldPasswordShared,
   partsToRun,
+  pmeStatusForTraining,
   yearBucket,
 } from "@/server/rules/import";
 
@@ -91,13 +95,14 @@ describe("the old database is only read", () => {
 
 describe("the parts of the import", () => {
   it("runs every part when none is named", () => {
-    expect(partsToRun(undefined)).toEqual(["org", "staff", "training", "ojt"]);
+    expect(partsToRun(undefined)).toEqual(["org", "staff", "training", "ojt", "pme"]);
   });
   it("runs the named part and those that depend on it", () => {
-    expect(partsToRun("org")).toEqual(["org", "staff", "training", "ojt"]);
-    expect(partsToRun("staff")).toEqual(["staff", "training", "ojt"]);
-    expect(partsToRun("training")).toEqual(["training", "ojt"]);
-    expect(partsToRun("ojt")).toEqual(["ojt"]);
+    expect(partsToRun("org")).toEqual(["org", "staff", "training", "ojt", "pme"]);
+    expect(partsToRun("staff")).toEqual(["staff", "training", "ojt", "pme"]);
+    expect(partsToRun("training")).toEqual(["training", "ojt", "pme"]);
+    expect(partsToRun("ojt")).toEqual(["ojt", "pme"]);
+    expect(partsToRun("pme")).toEqual(["pme"]);
   });
   it("doesn't know a made-up part", () => {
     expect(partsToRun("everything")).toBeNull();
@@ -317,5 +322,88 @@ describe("old OJT", () => {
     expect(yearBucket(2024)).toBe("2024");
     expect(yearBucket(1970)).toBe("other years");
     expect(yearBucket(2032)).toBe("other years");
+  });
+});
+
+describe("old PMEs", () => {
+  it("maps each old status", () => {
+    expect(mapPmeStatus("pending")).toBe("PENDING");
+    expect(mapPmeStatus("approved")).toBe("EVALUATED");
+    expect(mapPmeStatus("completed")).toBe("ACKNOWLEDGED");
+    expect(mapPmeStatus("verified")).toBe("VERIFIED");
+    expect(mapPmeStatus("not_applicable")).toBe("NOT_REQUIRED");
+    expect(mapPmeStatus("cancelled")).toBeNull();
+  });
+  it("keeps the PME furthest on when two belong to the same attendance, then the newest", () => {
+    expect(
+      keptPme([
+        { id: 1, status: "VERIFIED" as const },
+        { id: 2, status: "PENDING" as const },
+      ]).id,
+    ).toBe(1);
+    expect(
+      keptPme([
+        { id: 3, status: "PENDING" as const },
+        { id: 7, status: "PENDING" as const },
+      ]).id,
+    ).toBe(7);
+  });
+
+  const old = (over: Partial<Parameters<typeof mapPmeAnswers>[0]> = {}) => ({
+    ojt: "yes",
+    ratings: ["Excellent", "Very Good", "Good", "Poor"] as [unknown, unknown, unknown, unknown],
+    percents: ["95", "85%", "70", "10"] as [unknown, unknown, unknown, unknown],
+    remarks: [" Done twice ", "", null, "x"] as [unknown, unknown, unknown, unknown],
+    ...over,
+  });
+  it("puts the four ratings where the PME form keeps them", () => {
+    expect(mapPmeAnswers(old())).toEqual({
+      answers: {
+        q1: { rating: "EXCELLENT", percent: 95, remarks: "Done twice" },
+        q2: { rating: "VERY_GOOD", percent: 85, remarks: null },
+        q3: { rating: "GOOD", percent: 70, remarks: null },
+        q4: { rating: "POOR", percent: 10, remarks: "x" },
+        ojtConducted: true,
+      },
+      odd: [],
+    });
+  });
+  it("is nothing when nothing was rated", () => {
+    expect(mapPmeAnswers(old({ ratings: [null, "", null, null], percents: ["", null, null, null] }))).toEqual({ answers: null, odd: [] });
+  });
+  it("keeps a percentage outside its band, and lists it", () => {
+    const { answers, odd } = mapPmeAnswers(old({ percents: ["80", "85", "70", "10"] }));
+    expect(answers?.q1).toEqual({ rating: "EXCELLENT", percent: 80, remarks: "Done twice" });
+    expect(odd).toEqual(["q1: 80% is outside excellent (90 to 100)"]);
+  });
+  it("leaves OJT conducted unknown when it wasn't answered, never guessed", () => {
+    const { answers, odd } = mapPmeAnswers(old({ ojt: "" }));
+    expect(answers?.ojtConducted).toBeNull();
+    expect(odd).toEqual(["OJT conducted: not answered"]);
+  });
+  it("keeps no answers when one question can't be read", () => {
+    const { answers, odd } = mapPmeAnswers(old({ ratings: ["Excellent", "Superb", "Good", "Poor"] }));
+    expect(answers).toBeNull();
+    expect(odd).toEqual(['q2: rating "Superb"']);
+  });
+});
+
+describe("old PMEs on a training of 4 hours or less", () => {
+  it("are Not required when pending, as v2 treats a short training", () => {
+    expect(pmeStatusForTraining("PENDING", 4, false)).toBe("NOT_REQUIRED");
+    expect(pmeStatusForTraining("PENDING", 3.5, true)).toBe("NOT_REQUIRED");
+  });
+  it("are Not required when the old daily job completed them without an evaluation", () => {
+    expect(pmeStatusForTraining("ACKNOWLEDGED", 2, false)).toBe("NOT_REQUIRED");
+  });
+  it("keep their status once the HOD evaluated, or once verified", () => {
+    expect(pmeStatusForTraining("ACKNOWLEDGED", 2, true)).toBe("ACKNOWLEDGED");
+    expect(pmeStatusForTraining("EVALUATED", 2, true)).toBe("EVALUATED");
+    expect(pmeStatusForTraining("VERIFIED", 2, false)).toBe("VERIFIED");
+  });
+  it("leave a longer training's PME, or one whose hours can't be worked out, as it was", () => {
+    expect(pmeStatusForTraining("PENDING", 4.5, false)).toBe("PENDING");
+    expect(pmeStatusForTraining("ACKNOWLEDGED", 8, false)).toBe("ACKNOWLEDGED");
+    expect(pmeStatusForTraining("PENDING", null, false)).toBe("PENDING");
   });
 });

@@ -369,6 +369,42 @@ admin, who sees the most) found pages written for the demo data's 19 trainings. 
   why, and the export route answers with the same words. Each single year fits; 2023 to 2026 together (311,794 lines)
   does not.
 
+### Module 4: PME (built 19 Oct 2026)
+
+- **The PME part** (`src/server/import/pme.ts`, `--only pme`): 8,494 of the 8,617 old PMEs, each on the attendance row
+  the trainings part brought across (by the old row's id; 57 whose row was a left-out duplicate go on the same
+  person's kept row for that training). Left out, each listed: 64 whose attendance isn't in v2 (the row or the
+  staff member is gone), and 59 where another PME for the same attendance was kept (the one furthest on, then the
+  newest).
+- **Statuses** as planned: approved → Evaluated (369), completed → Acknowledged (221), verified → Verified (3,892),
+  not applicable → Not required, pending → Pending (2,645); except on short trainings (next point).
+- **Short trainings** (4 hours or less): the old system had no "not required" for them. A daily job
+  (`scripts/auto_complete_short_pme.php`) set their PME to completed once its period started, without an
+  evaluation. v2 marks such a PME Not required from the start, so a pending one (103) or one completed without an
+  evaluation (150) comes across as **Not required** (decided 19 Oct 2026; `pmeStatusForTraining`). One the HOD
+  evaluated keeps its status. Not required: 1,367 in all.
+- **Old "not applicable" means the person couldn't be evaluated** (not an executive or manager, a manager who is a
+  HOD or division head, no HOD, or resigned: the old trigger `after_participation_insert`, since 15 Sep 2026), not anything about hours. A
+  longer training's Not required PME now says so on its page instead of "4 hours or less".
+- **Every other pending PME comes across as pending** (decided 19 Oct 2026, beyond decision 9), whatever the
+  person's designation and attendance: 1,311 are for people who are non-executives now, whom v2 itself never asks a
+  HOD to evaluate, and some are on attendance that isn't completed. Recommended was to bring across only those v2
+  would ask for. **On day one HODs have 1,693 PMEs to evaluate** (the most for one HOD: 204; 3 of the 40 have
+  none); 272 more are for staff who have resigned and 20 are in departments with no HOD.
+- **The HOD's evaluation** (four ratings with percentages and remarks, and whether OJT was conducted) comes across
+  for the 684 that have one. **3,799 finished PMEs have none**: the old system marked them done without the HOD's
+  answers, most of them verified. Their page now says so instead of "waiting for the HOD", and L&D
+  can't verify an acknowledged one with no evaluation (v2 already refused that). 14 left "OJT conducted"
+  unanswered: it stays unknown and shows as "Not recorded" (`PmeAnswers.ojtConducted` may now be null).
+- **Dates**: the evaluation period is the old one. The old system kept when a PME was made (kept as its created
+  date) but not when it was evaluated, acknowledged or verified: those stay blank. The HOD who evaluated and the
+  L&D officer who verified are kept where the old row names them; the average mark is the old one where it has
+  one, otherwise worked out from the four percentages (none differ).
+- **Run into a practice database**, `ldms_v2_rehearsal`, by setting `IMPORT_DATABASE_URL` for the command only:
+  `.env` points `DATABASE_URL` at `ldms_v2_live`, where the import refuses to run.
+- **Tests**: 11 more unit tests (statuses, which PME is kept, the answers, an unanswered OJT question, short
+  trainings); `pme.spec.ts` passes.
+
 ## 7. Data model
 
 Two changes: `Section.shortName` and `Section.legacyId` (module 0), and `Staff.plant` (decision 14, module 1).

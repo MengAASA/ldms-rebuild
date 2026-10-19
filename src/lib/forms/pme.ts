@@ -53,7 +53,8 @@ export const CURRENT_PME_FORM = PME_V1;
 export const MAX_PME_REMARKS = 1000;
 
 export type PmeAnswer = { rating: PmeRating; percent: number; remarks: string | null };
-export type PmeAnswers = Record<PmeQuestionId, PmeAnswer> & { ojtConducted: boolean };
+/** `ojtConducted` is null only on some PMEs brought from the old system, where the question was left unanswered. */
+export type PmeAnswers = Record<PmeQuestionId, PmeAnswer> & { ojtConducted: boolean | null };
 
 /** Field names on the form: q1_rating, q1_percent, q1_remarks ... and ojtConducted. */
 export const pmeField = (id: PmeQuestionId, part: "rating" | "percent" | "remarks") => `${id}_${part}`;
@@ -103,5 +104,5 @@ export function readPmeAnswers(value: unknown, version: number | null | undefine
     const a = v[id] as Partial<PmeAnswer> | undefined;
     if (!a || typeof a.percent !== "number" || !PME_RATINGS.includes(a.rating as PmeRating)) return null;
   }
-  return typeof v.ojtConducted === "boolean" ? (v as unknown as PmeAnswers) : null;
+  return typeof v.ojtConducted === "boolean" || v.ojtConducted === null ? (v as unknown as PmeAnswers) : null;
 }

@@ -22,7 +22,7 @@ export function PmeForm({ pmeId, staffName, initial, cancelHref }: { pmeId: numb
         PME_QUESTION_IDS.map((id) => [id, { rating: initial?.[id].rating ?? "", percent: initial ? String(initial[id].percent) : "" }]),
       ) as Record<PmeQuestionId, Entry>,
   );
-  const [ojt, setOjt] = useState<"YES" | "NO" | "">(initial ? (initial.ojtConducted ? "YES" : "NO") : "");
+  const [ojt, setOjt] = useState<"YES" | "NO" | "">(initial?.ojtConducted == null ? "" : initial.ojtConducted ? "YES" : "NO");
 
   const set = (id: PmeQuestionId, patch: Partial<Entry>) => setEntries((prev) => ({ ...prev, [id]: { ...prev[id], ...patch } }));
   /** Picking a band clears a percentage that doesn't belong to it. */

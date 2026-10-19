@@ -52,7 +52,7 @@ export function isReadOnlySql(sql: string): boolean {
 
 // Each part needs the ones before it (attendance needs staff, staff need
 // departments), so running one part also empties and reloads those after it.
-export const IMPORT_PARTS = ["org", "staff", "training", "ojt"] as const;
+export const IMPORT_PARTS = ["org", "staff", "training", "ojt", "pme"] as const;
 export type ImportPart = (typeof IMPORT_PARTS)[number];
 
 export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
@@ -60,6 +60,7 @@ export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
   staff: "Staff, roles, HODs and division heads",
   training: "Trainings, attendance and course feedback",
   ojt: "OJT, attendance and answers",
+  pme: "PME (performance monitoring evaluations)",
 };
 
 /** The parts a run covers: all of them, or the one asked for and those that depend on it. */
@@ -372,4 +373,115 @@ export const mapOjtTrainer = (raw: unknown) => mapWord<NewProgram>(OJT_TRAINER_M
  */
 export function oldOjtCode(startDate: Date, oldId: number): string {
   return `OJT${startDate.toISOString().slice(0, 10).replaceAll("-", "")}${String(oldId).padStart(6, "0")}`;
+}
+
+// ---------- PME ----------
+
+export type NewPmeStatus = "NOT_REQUIRED" | "PENDING" | "EVALUATED" | "ACKNOWLEDGED" | "VERIFIED";
+
+const PME_STATUS_MAP: Record<string, NewPmeStatus> = {
+  PENDING: "PENDING",
+  APPROVED: "EVALUATED", // the HOD has evaluated
+  COMPLETED: "ACKNOWLEDGED", // the staff member has acknowledged
+  VERIFIED: "VERIFIED",
+  NOT_APPLICABLE: "NOT_REQUIRED",
+};
+
+/** The old PME status as v2's; null for a word the old system never wrote. */
+export const mapPmeStatus = (raw: unknown): NewPmeStatus | null => PME_STATUS_MAP[key(raw).replace(/ /g, "_")] ?? null;
+
+/** How far a PME has got, to keep the one furthest on when two belong to the same attendance. */
+const PME_PROGRESS: Record<NewPmeStatus, number> = { NOT_REQUIRED: 0, PENDING: 1, EVALUATED: 2, ACKNOWLEDGED: 3, VERIFIED: 4 };
+
+/** A training of this many hours or less needs no PME (PME_SHORT_HOURS in rules/pme.ts; the old system's line too). */
+const SHORT_TRAINING_HOURS = 4;
+
+/**
+ * A PME's status in v2, given its training's hours and whether the HOD's
+ * evaluation is on record. The old system had no "not required" for a short
+ * training: a daily job set its PME to completed once the period started,
+ * without an evaluation. v2 marks those Not required from the start, so on a
+ * training of 4 hours or less a pending PME, or a completed one with no
+ * evaluation, comes across as Not required (decided 19 Oct 2026). An
+ * evaluated one keeps its status: the HOD did evaluate it. Old "not
+ * applicable" means something else (the person couldn't be evaluated) and is
+ * Not required already.
+ */
+export function pmeStatusForTraining(status: NewPmeStatus, hours: number | null, evaluated: boolean): NewPmeStatus {
+  const short = hours !== null && hours <= SHORT_TRAINING_HOURS;
+  if (short && (status === "PENDING" || (status === "ACKNOWLEDGED" && !evaluated))) return "NOT_REQUIRED";
+  return status;
+}
+
+/** Of PMEs that belong to the same attendance, the one kept: furthest on, then the newest. */
+export function keptPme<R extends { id: number; status: NewPmeStatus }>(rows: R[]): R {
+  return rows.reduce((best, r) =>
+    PME_PROGRESS[r.status] > PME_PROGRESS[best.status] || (PME_PROGRESS[r.status] === PME_PROGRESS[best.status] && r.id > best.id) ? r : best,
+  );
+}
+
+const PME_RATING_MAP = {
+  EXCELLENT: "EXCELLENT",
+  "VERY GOOD": "VERY_GOOD",
+  GOOD: "GOOD",
+  SATISFACTORY: "SATISFACTORY",
+  FAIR: "FAIR",
+  POOR: "POOR",
+} as const;
+type NewPmeRating = (typeof PME_RATING_MAP)[keyof typeof PME_RATING_MAP];
+
+/** The six bands of the PME form (PME_BANDS in lib/forms/pme.ts): a percentage should sit inside its rating's. */
+const PME_RATING_BANDS: Record<NewPmeRating, [number, number]> = {
+  EXCELLENT: [90, 100],
+  VERY_GOOD: [80, 89],
+  GOOD: [70, 79],
+  SATISFACTORY: [60, 69],
+  FAIR: [50, 59],
+  POOR: [1, 49],
+};
+
+export type OldPmeAnswers = {
+  ojt: unknown;
+  ratings: [unknown, unknown, unknown, unknown];
+  percents: [unknown, unknown, unknown, unknown];
+  remarks: [unknown, unknown, unknown, unknown];
+};
+
+export type MappedPmeAnswer = { rating: NewPmeRating; percent: number; remarks: string | null };
+export type MappedPmeAnswers = { q1: MappedPmeAnswer; q2: MappedPmeAnswer; q3: MappedPmeAnswer; q4: MappedPmeAnswer; ojtConducted: boolean | null };
+
+/**
+ * The old evaluation as the PME form (version 1) stores it. The four old
+ * questions are, in order, level (q1, with the OJT question), level 2 (q2),
+ * behavioural (q3) and result (q4). `answers` is null when nothing was rated;
+ * a rating with no usable word or percentage leaves them all out (`odd` says
+ * why). A percentage outside its rating's band is kept as given and listed.
+ * OJT conducted left blank stays unknown (null), never guessed.
+ */
+export function mapPmeAnswers(old: OldPmeAnswers): { answers: MappedPmeAnswers | null; odd: string[] } {
+  const odd: string[] = [];
+  const blank = (v: unknown) => v === null || v === undefined || String(v).trim() === "";
+  if (old.ratings.every(blank) && old.percents.every(blank)) return { answers: null, odd };
+  const answers: Partial<Record<"q1" | "q2" | "q3" | "q4", MappedPmeAnswer>> = {};
+  old.ratings.forEach((raw, i) => {
+    const id = (["q1", "q2", "q3", "q4"] as const)[i];
+    const rating = PME_RATING_MAP[key(raw) as keyof typeof PME_RATING_MAP];
+    const text = String(old.percents[i] ?? "")
+      .trim()
+      .replace(/%$/, "");
+    const percent = /^\d{1,3}$/.test(text) ? Number(text) : Number.NaN;
+    if (!rating) odd.push(`${id}: rating "${String(raw ?? "")}"`);
+    else if (!(percent >= 1 && percent <= 100)) odd.push(`${id}: percentage "${String(old.percents[i] ?? "")}"`);
+    else {
+      const [min, max] = PME_RATING_BANDS[rating];
+      if (percent < min || percent > max) odd.push(`${id}: ${percent}% is outside ${rating.toLowerCase().replace("_", " ")} (${min} to ${max})`);
+      const remarks = typeof old.remarks[i] === "string" ? (old.remarks[i] as string).trim().slice(0, MAX_WRITTEN_ANSWER) : "";
+      answers[id] = { rating, percent, remarks: remarks || null };
+    }
+  });
+  const ojt = key(old.ojt);
+  const ojtConducted = ojt === "YES" ? true : ojt === "NO" ? false : null;
+  if (ojtConducted === null) odd.push("OJT conducted: not answered");
+  const complete = answers.q1 && answers.q2 && answers.q3 && answers.q4;
+  return { answers: complete ? { q1: answers.q1!, q2: answers.q2!, q3: answers.q3!, q4: answers.q4!, ojtConducted } : null, odd };
 }

@@ -305,7 +305,8 @@ function Evaluation({ p }: { p: PmeView }) {
               </div>
               {q.id === "q1" && (
                 <p className="mt-1.5 text-[13px]">
-                  <span className="text-ink-3">OJT conducted:</span> <span className="font-medium">{a.ojtConducted ? "Yes" : "No"}</span>
+                  <span className="text-ink-3">OJT conducted:</span>{" "}
+                  <span className="font-medium">{a.ojtConducted === null ? "Not recorded" : a.ojtConducted ? "Yes" : "No"}</span>
                 </p>
               )}
               {answer.remarks && (
@@ -336,7 +337,15 @@ function Waiting({ p, own }: { p: PmeView; own: boolean }) {
   const hod = p.evaluator?.name;
   let text: string;
   if (p.training.status === "CANCELLED") text = "This training was cancelled, so there is nothing to evaluate.";
-  else if (p.status === "NOT_REQUIRED") text = `This training was ${PME_SHORT_HOURS} hours or less, so no evaluation is needed.`;
+  else if (p.status === "NOT_REQUIRED")
+    // A longer training's comes from the old system's "not applicable": a PME no one could evaluate.
+    text =
+      p.training.hours !== null && p.training.hours > PME_SHORT_HOURS
+        ? "The old system marked this PME not applicable: no one could evaluate it (only executives and managers with a HOD are evaluated, and not HODs, division heads or staff who have left)."
+        : `This training was ${PME_SHORT_HOURS} hours or less, so no evaluation is needed.`;
+  // Brought from the old system, which marked many PMEs done without keeping the HOD's answers.
+  else if (p.status !== "PENDING")
+    text = "This PME was completed in the old system, which kept no record of the evaluation itself. Only where it got to came across.";
   else if (p.viewer.isApprover && p.blocked.EVALUATE) text = p.blocked.EVALUATE;
   else if (p.staff.status !== "ACTIVE") text = `${p.staff.name} has resigned, so this PME won't be evaluated.`;
   else if (p.stage === "IN_PERIOD")

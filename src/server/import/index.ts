@@ -11,6 +11,7 @@ import {
 } from "../rules/import";
 import { importOjt } from "./ojt";
 import { importOrg } from "./org";
+import { importPmes } from "./pme";
 import { writeReport } from "./report";
 import { ImportRun } from "./run";
 import { importStaff } from "./staff";
@@ -25,6 +26,7 @@ const PARTS: Record<ImportPart, (run: ImportRun) => Promise<void>> = {
   staff: importStaff,
   training: importTrainings,
   ojt: importOjt,
+  pme: importPmes,
 };
 
 /** A reason a person can act on; thrown for anything that stops the run before it writes. */
@@ -36,6 +38,11 @@ export type ImportOptions = {
   /** Go ahead although people have already changed records in the database being filled. */
   discardChanges: boolean;
 };
+
+/** The import's own entries for the parts that stay are kept; everything else in the log goes. */
+async function clearLog(db: PrismaClient, from: ImportPart) {
+  await db.auditLog.deleteMany({ where: { NOT: { entity: "Import", entityId: { in: IMPORT_PARTS.slice(0, IMPORT_PARTS.indexOf(from)) } } } });
+}
 
 /**
  * Empties what the run is about to load: everything from the part it starts
@@ -56,13 +63,13 @@ async function empty(db: PrismaClient, from: ImportPart) {
   await db.skillTopic.deleteMany();
   await db.skillEvaluation.deleteMany();
   await db.pme.deleteMany();
+  if (from === "pme") return clearLog(db, from);
   // Running only the OJT part keeps the other trainings.
   const trainings = from === "ojt" ? { type: "OJT" as const } : {};
   await db.participant.deleteMany({ where: { training: trainings } });
   await db.trainingSession.deleteMany({ where: { training: trainings } });
   await db.training.deleteMany({ where: trainings });
-  // The import's own entries for the parts that stay are kept; everything else in the log goes.
-  await db.auditLog.deleteMany({ where: { NOT: { entity: "Import", entityId: { in: IMPORT_PARTS.slice(0, IMPORT_PARTS.indexOf(from)) } } } });
+  await clearLog(db, from);
   if (from === "training" || from === "ojt") return;
   await db.staffRole.deleteMany();
   await db.department.updateMany({ data: { hodId: null } });

@@ -16,6 +16,8 @@ import {
   skillStaffScope,
   skillStage,
   skillStartBlock,
+  skillMatrixScores,
+  skillTopicKey,
   skillTopicScore,
   skillViewer,
   type Quarter,
@@ -230,11 +232,12 @@ export async function staffSkillHistory(user: SessionUser, staffId: number) {
       returnReason: true,
       approvedAt: true,
       createdBy: { select: { name: true } },
-      topics: { select: { items: { select: { rating: true } } } },
+      topics: { select: { section: true, name: true, items: { select: { rating: true } } } },
     },
   });
   return rows.map(({ topics, ...m }) => {
-    const scores = topics.map((t) => skillTopicScore(t.items)).filter((s): s is number => s !== null);
+    // The same average as the chart's.
+    const scores = [...skillMatrixScores(topics).values()];
     return {
       ...m,
       stage: skillStage(m),
@@ -406,7 +409,9 @@ export async function approveSkillMatrices(user: SessionUser, ids: number[], tod
     await notify(
       tx,
       user.id,
-      approving.map((m) => skillNotification("skill.approved", { id: m.id, staffName: m.staff.name, quarter: quarterLabel(m), evaluatorId: m.createdBy?.id ?? null }, user.name)),
+      approving.map((m) =>
+        skillNotification("skill.approved", { id: m.id, staffName: m.staff.name, quarter: quarterLabel(m), evaluatorId: m.createdBy?.id ?? null }, user.name),
+      ),
     );
     return { approved: approving.length, skipped };
   });
@@ -427,7 +432,9 @@ export async function sendBackSkillMatrix(user: SessionUser, id: number, reason:
       summary: `Sent ${who(m.staff)}'s skill matrix for ${quarterLabel(m)} back to the evaluator`,
       changes: { status: ["SUBMITTED", "DRAFT"], reason: [null, reason] },
     });
-    await notify(tx, user.id, [skillNotification("skill.returned", { id: m.id, staffName: m.staff.name, quarter: quarterLabel(m), evaluatorId: m.createdBy?.id ?? null }, user.name)]);
+    await notify(tx, user.id, [
+      skillNotification("skill.returned", { id: m.id, staffName: m.staff.name, quarter: quarterLabel(m), evaluatorId: m.createdBy?.id ?? null }, user.name),
+    ]);
   });
 }
 
@@ -566,13 +573,12 @@ export async function skillChart(user: SessionUser, departmentId: number, quarte
   });
 
   // Topics are typed in, so the same one may differ in case or spacing between people: match on a tidied key.
-  const key = (section: string, name: string) => `${section}|${name.trim().toLowerCase().replace(/\s+/g, " ")}`;
   const columns: { key: string; section: (typeof matrices)[number]["topics"][number]["section"]; name: string }[] = [];
   const seen = new Set<string>();
   for (const section of ["KNOWLEDGE", "SKILL", "ABILITY"] as const)
     for (const m of matrices)
       for (const t of m.topics) {
-        const k = key(t.section, t.name);
+        const k = skillTopicKey(t.section, t.name);
         if (t.section === section && !seen.has(k)) {
           seen.add(k);
           columns.push({ key: k, section, name: t.name });
@@ -580,11 +586,7 @@ export async function skillChart(user: SessionUser, departmentId: number, quarte
       }
 
   const rows = matrices.map((m) => {
-    const scores = new Map<string, number>();
-    for (const t of m.topics) {
-      const score = skillTopicScore(t.items);
-      if (score !== null) scores.set(key(t.section, t.name), score);
-    }
+    const scores = skillMatrixScores(m.topics);
     const all = [...scores.values()];
     return {
       id: m.id,

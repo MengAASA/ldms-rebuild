@@ -405,6 +405,43 @@ admin, who sees the most) found pages written for the demo data's 19 trainings. 
 - **Tests**: 11 more unit tests (statuses, which PME is kept, the answers, an unanswered OJT question, short
   trainings); `pme.spec.ts` passes.
 
+### Module 5: Skill matrix (built 19 Oct 2026)
+
+- **The skill matrix part** (`src/server/import/skill.ts`, `--only skill`): all 2,851 matrices, 32,936 topics and
+  153,296 lines, with the quarter the old system stores on each (decision 10) and its status: blank → Draft (389),
+  PENDING → Waiting for the HOD (973), APPROVED → Approved (1,489). Every count by quarter and status matches, and so
+  does the sum of all the ratings. The old data is clean: no matrix without its staff member, no two for one person
+  and quarter, every rating 1 to 5, every topic and line within the v2 form's limits. **The evaluator role** came
+  across with the staff in module 1 (146 active evaluators).
+- **The chart matches the old one** for every quarter and every department: the same people on it (submitted and
+  approved matrices), and the same average score before v2 rounds each score to a whole percentage (Q2 2026:
+  77.83 %; Q3 2026: 82.67 %). v2's own chart, run on the imported copy for every department, gives 77.81 % and
+  82.69 % with its rounding, each department in under 250 ms.
+- **A topic named twice in one section** (202 matrices, each with one such topic, its lines different each time):
+  the old chart pooled the two topics' lines into one score; v2's chart kept only the last. **The chart now pools
+  them as the old one did** (`skillMatrixScores` in `rules/skill.ts`), and the average on the staff record uses the
+  same rule. The matrix itself still shows both topics as entered.
+- **Dates**: the old system kept when a matrix was made and when it was approved, but not when it was sent to the
+  HOD. **The day it was made stands in for the day it was sent** (as the feedback date did in module 2), so the
+  Approvals page has an order and a "waiting since". L&D to confirm. The approver and approval time are the old ones.
+- **Who approves**: the old system asked the evaluator's own HOD; v2 asks the HOD of the person's department. They
+  are the same for all but 6 of the 973 waiting: 4 go to a different HOD in v2 and 2 are in a department with no HOD
+  (both Q2 2026). **On day one HODs have 971 matrices to approve** (the most for one HOD: 196; 25 of the 40 have
+  none). 215 are for Q2 2026, which closed on 30 Sep: as in the old system, the HOD can still approve them but not
+  send them back.
+- **Imported as they are and listed**, though v2 itself wouldn't let them happen today: 344 matrices for staff who
+  have since resigned, 43 filled in by the staff member themselves (14 of them, in the open quarter, can be carried
+  on by another evaluator or approved by the HOD, but not changed by that person), 44 filled in by someone from
+  another department, and 2 for executives (on their staff record and the chart, not on the list, which shows
+  non-executive and contract staff).
+- **Approvals has filters** (asked for 19 Oct 2026, since a HOD may now have hundreds waiting): a search (name,
+  staff no., training, evaluator), what to show (PMEs to evaluate, skill matrices, TNAs, PMEs to verify) and the
+  department, each offered only when there is something to choose between. The approve-all buttons approve only
+  what the filters show. **PMEs to verify** shows 50 at a time, with Previous and Next that keep the filters (237
+  for L&D on the imported copy: 5 pages). `rules/approvals.ts`.
+- **Tests**: 3 more unit tests for the import (status, section and rating words; the part order), 2 for the
+  chart's topic matching and pooling, 5 for the Approvals filters, and a step in `skill-matrix.spec.ts`.
+
 ## 7. Data model
 
 Two changes: `Section.shortName` and `Section.legacyId` (module 0), and `Staff.plant` (decision 14, module 1).

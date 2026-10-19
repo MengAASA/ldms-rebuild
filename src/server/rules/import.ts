@@ -52,7 +52,7 @@ export function isReadOnlySql(sql: string): boolean {
 
 // Each part needs the ones before it (attendance needs staff, staff need
 // departments), so running one part also empties and reloads those after it.
-export const IMPORT_PARTS = ["org", "staff", "training", "ojt", "pme"] as const;
+export const IMPORT_PARTS = ["org", "staff", "training", "ojt", "pme", "skill"] as const;
 export type ImportPart = (typeof IMPORT_PARTS)[number];
 
 export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
@@ -61,6 +61,7 @@ export const IMPORT_PART_LABELS: Record<ImportPart, string> = {
   training: "Trainings, attendance and course feedback",
   ojt: "OJT, attendance and answers",
   pme: "PME (performance monitoring evaluations)",
+  skill: "Skill matrices",
 };
 
 /** The parts a run covers: all of them, or the one asked for and those that depend on it. */
@@ -484,4 +485,27 @@ export function mapPmeAnswers(old: OldPmeAnswers): { answers: MappedPmeAnswers |
   if (ojtConducted === null) odd.push("OJT conducted: not answered");
   const complete = answers.q1 && answers.q2 && answers.q3 && answers.q4;
   return { answers: complete ? { q1: answers.q1!, q2: answers.q2!, q3: answers.q3!, q4: answers.q4!, ojtConducted } : null, odd };
+}
+
+// ---------- Skill matrix ----------
+
+export type NewSkillStatus = "DRAFT" | "SUBMITTED" | "APPROVED";
+
+/** The old `approval_status`: blank is a draft (saved, not sent), PENDING is with the HOD, APPROVED is approved. Null for a word the old system never wrote. */
+export function mapSkillStatus(raw: unknown): NewSkillStatus | null {
+  const k = key(raw);
+  if (!k) return "DRAFT";
+  return k === "PENDING" ? "SUBMITTED" : k === "APPROVED" ? "APPROVED" : null;
+}
+
+/** The old `section_type` (knowledge, skill, ability) as v2's section; null for any other word. */
+export function mapSkillSection(raw: unknown): "KNOWLEDGE" | "SKILL" | "ABILITY" | null {
+  const k = key(raw);
+  return k === "KNOWLEDGE" || k === "SKILL" || k === "ABILITY" ? k : null;
+}
+
+/** An old rating as v2 stores it: a whole number from 1 (Beginner) to 5 (Expert); null for anything else. */
+export function mapSkillRating(raw: unknown): number | null {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
 }

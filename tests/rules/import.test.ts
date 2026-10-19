@@ -26,6 +26,9 @@ import {
   mapOldRoles,
   mapPlatform,
   mapProgram,
+  mapSkillRating,
+  mapSkillSection,
+  mapSkillStatus,
   mapStaffStatus,
   NOT_COMPLETED_REASON,
   oldOjtCode,
@@ -95,14 +98,15 @@ describe("the old database is only read", () => {
 
 describe("the parts of the import", () => {
   it("runs every part when none is named", () => {
-    expect(partsToRun(undefined)).toEqual(["org", "staff", "training", "ojt", "pme"]);
+    expect(partsToRun(undefined)).toEqual(["org", "staff", "training", "ojt", "pme", "skill"]);
   });
   it("runs the named part and those that depend on it", () => {
-    expect(partsToRun("org")).toEqual(["org", "staff", "training", "ojt", "pme"]);
-    expect(partsToRun("staff")).toEqual(["staff", "training", "ojt", "pme"]);
-    expect(partsToRun("training")).toEqual(["training", "ojt", "pme"]);
-    expect(partsToRun("ojt")).toEqual(["ojt", "pme"]);
-    expect(partsToRun("pme")).toEqual(["pme"]);
+    expect(partsToRun("org")).toEqual(["org", "staff", "training", "ojt", "pme", "skill"]);
+    expect(partsToRun("staff")).toEqual(["staff", "training", "ojt", "pme", "skill"]);
+    expect(partsToRun("training")).toEqual(["training", "ojt", "pme", "skill"]);
+    expect(partsToRun("ojt")).toEqual(["ojt", "pme", "skill"]);
+    expect(partsToRun("pme")).toEqual(["pme", "skill"]);
+    expect(partsToRun("skill")).toEqual(["skill"]);
   });
   it("doesn't know a made-up part", () => {
     expect(partsToRun("everything")).toBeNull();
@@ -405,5 +409,26 @@ describe("old PMEs on a training of 4 hours or less", () => {
     expect(pmeStatusForTraining("PENDING", 4.5, false)).toBe("PENDING");
     expect(pmeStatusForTraining("ACKNOWLEDGED", 8, false)).toBe("ACKNOWLEDGED");
     expect(pmeStatusForTraining("PENDING", null, false)).toBe("PENDING");
+  });
+});
+
+describe("old skill matrices", () => {
+  it("map the old status: blank is a draft, PENDING is with the HOD", () => {
+    expect(mapSkillStatus(null)).toBe("DRAFT");
+    expect(mapSkillStatus("")).toBe("DRAFT");
+    expect(mapSkillStatus("PENDING")).toBe("SUBMITTED");
+    expect(mapSkillStatus(" approved ")).toBe("APPROVED");
+    expect(mapSkillStatus("REJECTED")).toBeNull();
+  });
+  it("map the three sections, and nothing else", () => {
+    expect(mapSkillSection("knowledge")).toBe("KNOWLEDGE");
+    expect(mapSkillSection("skill")).toBe("SKILL");
+    expect(mapSkillSection("Ability")).toBe("ABILITY");
+    expect(mapSkillSection("attitude")).toBeNull();
+    expect(mapSkillSection(null)).toBeNull();
+  });
+  it("keep a rating of 1 to 5 and nothing else", () => {
+    expect([1, 2, 3, 4, 5].map(mapSkillRating)).toEqual([1, 2, 3, 4, 5]);
+    for (const raw of [0, 6, 2.5, "x", null]) expect(mapSkillRating(raw)).toBeNull();
   });
 });

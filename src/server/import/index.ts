@@ -14,6 +14,7 @@ import { importOrg } from "./org";
 import { importPmes } from "./pme";
 import { writeReport } from "./report";
 import { ImportRun } from "./run";
+import { importSkillMatrices } from "./skill";
 import { importStaff } from "./staff";
 import { importTrainings } from "./training";
 
@@ -27,6 +28,7 @@ const PARTS: Record<ImportPart, (run: ImportRun) => Promise<void>> = {
   training: importTrainings,
   ojt: importOjt,
   pme: importPmes,
+  skill: importSkillMatrices,
 };
 
 /** A reason a person can act on; thrown for anything that stops the run before it writes. */
@@ -62,6 +64,7 @@ async function empty(db: PrismaClient, from: ImportPart) {
   await db.skillItem.deleteMany();
   await db.skillTopic.deleteMany();
   await db.skillEvaluation.deleteMany();
+  if (from === "skill") return clearLog(db, from);
   await db.pme.deleteMany();
   if (from === "pme") return clearLog(db, from);
   // Running only the OJT part keeps the other trainings.

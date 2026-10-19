@@ -11,6 +11,7 @@ import {
   skillActionBlock,
   skillEvaluatorDepartments,
   skillLevel,
+  skillMatrixScores,
   skillOpenQuarter,
   skillQuarterBlock,
   skillQuarterCloses,
@@ -18,6 +19,7 @@ import {
   skillStage,
   skillStartBlock,
   skillSubjectBlock,
+  skillTopicKey,
   skillTopicScore,
   skillViewer,
   type SkillState,
@@ -217,6 +219,21 @@ describe("scores and levels", () => {
     expect(skillTopicScore(rated(4, null))).toBe(80);
     expect(skillTopicScore(rated(null))).toBeNull();
     expect(skillTopicScore([])).toBeNull();
+  });
+  it("matches a topic on the chart by section and name, whatever its case and spacing", () => {
+    expect(skillTopicKey("SKILL", "  Press   Operation ")).toBe(skillTopicKey("SKILL", "press operation"));
+    expect(skillTopicKey("SKILL", "Press operation")).not.toBe(skillTopicKey("ABILITY", "Press operation"));
+  });
+  it("pools the lines of a topic named twice in one matrix, as the old chart did", () => {
+    const scores = skillMatrixScores([
+      { section: "SKILL", name: "Press operation", items: rated(5, 5) },
+      { section: "SKILL", name: "press operation", items: rated(1, 2, 2) },
+      { section: "ABILITY", name: "Press operation", items: rated(3) },
+      { section: "KNOWLEDGE", name: "Not rated yet", items: rated(null) },
+    ]);
+    expect(scores.get(skillTopicKey("SKILL", "Press operation"))).toBe(60); // 15 of 25, not the 100 and 33 of each part
+    expect(scores.get(skillTopicKey("ABILITY", "Press operation"))).toBe(60);
+    expect(scores.size).toBe(2);
   });
   it("puts a score in one of five levels", () => {
     expect(skillLevel(100)).toBe(100);

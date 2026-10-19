@@ -12,8 +12,11 @@ export function Panel({
   children,
   className = "",
   flush = false,
+  id,
 }: {
   title: React.ReactNode;
+  /** For a link to the card, e.g. a pager's links back to its table. */
+  id?: string;
   /** One line under the title saying what the card shows. */
   description?: React.ReactNode;
   action?: React.ReactNode;
@@ -25,7 +28,7 @@ export function Panel({
   const titleId = useId();
   return (
     // min-w-0: in a grid, a card shrinks to its column rather than growing to fit a long title.
-    <section aria-labelledby={titleId} className={`card flex min-w-0 flex-col ${className}`}>
+    <section id={id} aria-labelledby={titleId} className={`card flex min-w-0 flex-col ${className}`}>
       <div className={`flex items-start justify-between gap-3 px-5 pt-4 ${flush ? "border-b border-rule pb-3.5" : ""}`}>
         <div className="min-w-0">
           <h2 id={titleId} className="display text-[15.5px] leading-snug font-semibold text-ink">

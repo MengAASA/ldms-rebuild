@@ -233,6 +233,28 @@ export function skillTopicScore(items: Pick<SkillLine, "rating">[]): number | nu
   return Math.round((rated.reduce((sum, i) => sum + i.rating!, 0) / (rated.length * 5)) * 100);
 }
 
+/** A topic as the chart matches it across people: its section and its name, ignoring case and spacing (topics are typed in). */
+export const skillTopicKey = (section: string, name: string) => `${section}|${name.trim().toLowerCase().replace(/\s+/g, " ")}`;
+
+/**
+ * One matrix's scores for the chart, by topic key. A topic named twice in a
+ * section counts once, its lines pooled, as the old chart did; a topic with
+ * nothing rated has no score.
+ */
+export function skillMatrixScores(topics: { section: string; name: string; items: Pick<SkillLine, "rating">[] }[]): Map<string, number> {
+  const pooled = new Map<string, Pick<SkillLine, "rating">[]>();
+  for (const t of topics) {
+    const k = skillTopicKey(t.section, t.name);
+    pooled.set(k, [...(pooled.get(k) ?? []), ...t.items]);
+  }
+  const scores = new Map<string, number>();
+  for (const [k, items] of pooled) {
+    const score = skillTopicScore(items);
+    if (score !== null) scores.set(k, score);
+  }
+  return scores;
+}
+
 /** The five levels the chart shows, highest first. `level` is the score it starts at. */
 export const SKILL_LEVELS = [
   { level: 100, label: "Highly skilled", hint: "Able to supervise others" },

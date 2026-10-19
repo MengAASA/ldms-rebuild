@@ -1,14 +1,25 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { forbidden } from "next/navigation";
-import { ArrowRight, CheckCircle2 } from "lucide-react";
+import { ArrowRight, CheckCircle2, SearchX } from "lucide-react";
 import { PageHeader } from "@/components/PageHeader";
 import { Panel } from "@/components/Panel";
 import { ClickableRow } from "@/components/ui/ClickableRow";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Select } from "@/components/ui/Select";
 import { Status } from "@/components/ui/Status";
+import { withBasePath } from "@/lib/base-path";
 import { daysAgo, formatDate, formatDateRange, formatDateTime, nowInMalaysia, plural } from "@/lib/format";
 import { can, hasApprovals, isHod } from "@/server/permissions";
+import {
+  APPROVAL_KINDS,
+  APPROVAL_KIND_LABELS,
+  approvalFiltered,
+  approvalMatches,
+  approvalPage,
+  parseApprovalFilters,
+  type ApprovalKind,
+} from "@/server/rules/approvals";
 import { pmeOpensOn } from "@/server/rules/pme";
 import { pmeStageCounts, pmeWaiting, type PmeView } from "@/server/services/pme";
 import { quarterLabel } from "@/server/rules/skill";
@@ -21,11 +32,14 @@ import { formatMark } from "../pme/labels";
 
 export const metadata: Metadata = { title: "Approvals" };
 
+const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v) ?? "";
+
 /**
  * Everything waiting on the signed-in person, the longest-waiting first:
- * PMEs, skill matrices and TNAs.
+ * PMEs, skill matrices and TNAs. A search, the kind of record and the
+ * department narrow the lists, and the approve-all buttons with them.
  */
-export default async function ApprovalsPage() {
+export default async function ApprovalsPage({ searchParams }: PageProps<"/approvals">) {
   const user = await requireUser();
   if (!hasApprovals(user)) forbidden();
   const today = nowInMalaysia();
@@ -37,9 +51,65 @@ export default async function ApprovalsPage() {
     skillWaiting(user, today),
     tnaWaiting(user, today),
   ]);
-  const tnas = tna.toApprove;
-  const matrices = skill.toApprove;
-  const total = waiting.toEvaluate.length + waiting.toVerify.length + matrices.length + tnas.length;
+  const sp = await searchParams;
+  const f = parseApprovalFilters({ q: one(sp.q), kind: one(sp.kind), department: one(sp.department) });
+  const all: Record<ApprovalKind, number> = {
+    PME_EVALUATE: waiting.toEvaluate.length,
+    SKILL: skill.toApprove.length,
+    TNA: tna.toApprove.length,
+    PME_VERIFY: waiting.toVerify.length,
+  };
+  const total = Object.values(all).reduce((a, b) => a + b, 0);
+
+  const toEvaluate = waiting.toEvaluate.filter((p) =>
+    approvalMatches({ kind: "PME_EVALUATE", department: p.staff.department, text: [p.staff.name, p.staff.staffNo, p.staff.position, p.training.title] }, f),
+  );
+  const matrices = skill.toApprove.filter((m) =>
+    approvalMatches(
+      { kind: "SKILL", department: m.staff.department.name, text: [m.staff.name, m.staff.staffNo, m.staff.position, m.createdBy?.name, quarterLabel(m)] },
+      f,
+    ),
+  );
+  const tnas = tna.toApprove.filter((t) =>
+    approvalMatches(
+      {
+        kind: "TNA",
+        department: t.staff?.department.name ?? t.department?.name,
+        text: [t.staff?.name, t.staff?.staffNo, t.staff?.position, t.staff ? null : `Job grade ${t.jobGrade}`, t.submittedBy?.name, String(t.year)],
+      },
+      f,
+    ),
+  );
+  const toVerify = waiting.toVerify.filter((p) =>
+    approvalMatches(
+      { kind: "PME_VERIFY", department: p.staff.department, text: [p.staff.name, p.staff.staffNo, p.staff.position, p.training.title, p.evaluatedBy?.name] },
+      f,
+    ),
+  );
+  const shown = toEvaluate.length + matrices.length + tnas.length + toVerify.length;
+  const filtered = approvalFiltered(f);
+  // L&D may have hundreds to verify: that table shows a page at a time, keeping the filters.
+  const verify = approvalPage(toVerify.length, one(sp.verifyPage));
+  const verifyPageHref = (page: number) => {
+    const params = new URLSearchParams();
+    for (const [k, v] of Object.entries({ q: f.q, kind: f.kind, department: f.department, verifyPage: page > 1 ? String(page) : undefined }))
+      if (v) params.set(k, v);
+    const s = params.toString();
+    return `/approvals${s ? `?${s}` : ""}#pmes-to-verify`;
+  };
+
+  // The filters offer only what is waiting: the kinds with something in them, and their departments.
+  const kinds = APPROVAL_KINDS.filter((k) => all[k] > 0);
+  const departments = [
+    ...new Set(
+      [
+        ...waiting.toEvaluate.map((p) => p.staff.department),
+        ...skill.toApprove.map((m) => m.staff.department.name),
+        ...tna.toApprove.map((t) => t.staff?.department.name ?? t.department?.name),
+        ...waiting.toVerify.map((p) => p.staff.department),
+      ].filter((d): d is string => !!d),
+    ),
+  ].sort();
 
   return (
     <div>
@@ -63,11 +133,73 @@ export default async function ApprovalsPage() {
           </div>
         )}
 
-        {waiting.toEvaluate.length > 0 && (
+        {total > 1 && (
+          <form method="get" className="card flex flex-wrap items-end gap-2 p-3" role="search" aria-label="Filter approvals">
+            <div className="w-full sm:w-64">
+              <label htmlFor="q" className="label">
+                Search
+              </label>
+              <input id="q" name="q" defaultValue={f.q ?? ""} className="input" placeholder="Name, staff no., training or evaluator" type="search" />
+            </div>
+            {kinds.length > 1 && (
+              <div className="w-full sm:w-56">
+                <label htmlFor="kind" className="label">
+                  Show
+                </label>
+                <Select
+                  id="kind"
+                  name="kind"
+                  defaultValue={f.kind ?? ""}
+                  options={[
+                    { value: "", label: "Everything waiting" },
+                    ...kinds.map((k) => ({ value: k, label: APPROVAL_KIND_LABELS[k], hint: String(all[k]) })),
+                  ]}
+                />
+              </div>
+            )}
+            {departments.length > 1 && (
+              <div className="w-full sm:w-64">
+                <label htmlFor="department" className="label">
+                  Department
+                </label>
+                <Select
+                  id="department"
+                  name="department"
+                  defaultValue={f.department ?? ""}
+                  options={[{ value: "", label: "All departments" }, ...departments.map((d) => ({ value: d, label: d }))]}
+                />
+              </div>
+            )}
+            <button type="submit" className="btn">
+              Apply
+            </button>
+            {/* A full page load, so every field resets, including ones typed in but not applied yet. */}
+            <a href={withBasePath("/approvals")} className="btn">
+              Clear
+            </a>
+            <span className="num ml-auto self-center text-[13px] text-ink-3">
+              {filtered ? `${shown} of ${plural(total, "record")} matching` : plural(total, "record")}
+            </span>
+          </form>
+        )}
+
+        {filtered && total > 0 && shown === 0 && (
+          <div className="card">
+            <EmptyState icon={SearchX} title="Nothing matches">
+              None of the {plural(total, "record")} waiting for you match.{" "}
+              <a href={withBasePath("/approvals")} className="link">
+                Clear the filters
+              </a>{" "}
+              to see them all.
+            </EmptyState>
+          </div>
+        )}
+
+        {toEvaluate.length > 0 && (
           <Panel
             title="PMEs to evaluate"
             description="Your staff whose evaluation period has ended, the longest-waiting first"
-            action={<Status tone="wait">{waiting.toEvaluate.length} to do</Status>}
+            action={<Status tone="wait">{toEvaluate.length} to do</Status>}
             flush
           >
             <div className="overflow-x-auto">
@@ -85,7 +217,7 @@ export default async function ApprovalsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {waiting.toEvaluate.map((p, i) => (
+                  {toEvaluate.map((p, i) => (
                     <ClickableRow key={p.id} href={`/pme/${p.id}`}>
                       <td className="num muted pl-5 text-right">{i + 1}</td>
                       <td>
@@ -270,11 +402,12 @@ export default async function ApprovalsPage() {
             </div>
           </Panel>
         )}
-        {waiting.toVerify.length > 0 && (
+        {toVerify.length > 0 && (
           <Panel
+            id="pmes-to-verify"
             title="PMEs to verify"
             description="Evaluated by the HOD and acknowledged by the staff member, the longest-waiting first"
-            action={<Status tone="wait">{waiting.toVerify.length} to do</Status>}
+            action={<Status tone="wait">{toVerify.length} to do</Status>}
             flush
           >
             <div className="overflow-x-auto">
@@ -294,9 +427,9 @@ export default async function ApprovalsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {waiting.toVerify.map((p, i) => (
+                  {toVerify.slice(verify.start, verify.end).map((p, i) => (
                     <ClickableRow key={p.id} href={`/pme/${p.id}`}>
-                      <td className="num muted pl-5 text-right">{i + 1}</td>
+                      <td className="num muted pl-5 text-right">{verify.start + i + 1}</td>
                       <td>
                         <Staff p={p} />
                       </td>
@@ -317,6 +450,36 @@ export default async function ApprovalsPage() {
                 </tbody>
               </table>
             </div>
+            {verify.pages > 1 && (
+              <nav aria-label="PMEs to verify, pages" className="flex items-center justify-between gap-3 border-t border-rule px-5 py-3 text-[13px] text-ink-2">
+                <span className="num">
+                  {verify.start + 1}–{verify.end} of {toVerify.length}
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="num hidden sm:inline">
+                    Page {verify.page} of {verify.pages}
+                  </span>
+                  {verify.page > 1 ? (
+                    <Link className="btn btn-sm" href={verifyPageHref(verify.page - 1)}>
+                      Previous
+                    </Link>
+                  ) : (
+                    <span className="btn btn-sm pointer-events-none opacity-50" aria-disabled>
+                      Previous
+                    </span>
+                  )}
+                  {verify.page < verify.pages ? (
+                    <Link className="btn btn-sm" href={verifyPageHref(verify.page + 1)}>
+                      Next
+                    </Link>
+                  ) : (
+                    <span className="btn btn-sm pointer-events-none opacity-50" aria-disabled>
+                      Next
+                    </span>
+                  )}
+                </div>
+              </nav>
+            )}
           </Panel>
         )}
 

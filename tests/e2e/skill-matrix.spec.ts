@@ -264,6 +264,7 @@ test("a closed quarter is view-only: no edits, the HOD can still approve, and a 
   // Last quarter's leftovers: one submitted in time but never approved, one draft never sent.
   const submittedId = await createTestSkillMatrix("10238", CLOSED, "SUBMITTED", "10003");
   const draftId = await createTestSkillMatrix("10239", CLOSED, "DRAFT", "10003");
+  await createTestSkillMatrix("10237", CLOSED, "SUBMITTED", "10003"); // a second one waiting, so Approvals has something to filter
   const evaluator = await as(browser, "10003");
   const hod = await as(browser, "10231");
 
@@ -302,6 +303,31 @@ test("a closed quarter is view-only: no edits, the HOD can still approve, and a 
     await expect(row(evaluator, AZRUL)).toContainText("Draft");
     await row(evaluator, AZRUL).getByRole("link", { name: "Continue" }).click();
     await expect(evaluator.getByLabel("Knowledge topic 1", { exact: true })).toHaveValue("Test knowledge topic");
+  });
+
+  await test.step("the HOD narrows Approvals by a search and by the kind of record", async () => {
+    await hod.goto("approvals");
+    const filters = hod.getByRole("search", { name: "Filter approvals" });
+    await filters.getByLabel("Search").fill("10238");
+    await filters.getByRole("button", { name: "Apply" }).click();
+    await expect(hod).toHaveURL(/q=10238/);
+    const matrices = panel(hod, "Skill matrices to approve");
+    await expect(matrices.getByRole("row", { name: new RegExp(GANESAN) })).toBeVisible();
+    await expect(matrices.getByRole("row", { name: new RegExp(CHONG) })).toHaveCount(0);
+    await expect(matrices).toContainText("1 to do");
+    await expect(filters.getByLabel("Search")).toHaveValue("10238");
+
+    // The evaluator's name finds both; showing skill matrices only leaves out everything else.
+    await hod.goto("approvals?kind=SKILL&q=ooi+boon");
+    await expect(matrices.getByRole("row", { name: new RegExp(`${GANESAN}|${CHONG}`) })).toHaveCount(2);
+    await expect(panel(hod, "PMEs to evaluate")).toHaveCount(0);
+    await expect(panel(hod, "TNAs to approve")).toHaveCount(0);
+    await expect(matrices.getByRole("button", { name: "Approve all 2" })).toBeVisible();
+
+    await hod.goto("approvals?q=no+one+is+called+this");
+    await expect(hod.getByText("Nothing matches")).toBeVisible();
+    await hod.getByRole("link", { name: "Clear the filters" }).click();
+    await expect(matrices.getByRole("row", { name: new RegExp(GANESAN) })).toBeVisible();
   });
 
   await test.step("the matrix submitted in time still waits for the HOD, who can approve but not send back", async () => {

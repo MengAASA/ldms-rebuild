@@ -23,8 +23,14 @@ type Props = {
   defaultValue?: string;
   onChange?: (value: string) => void;
   placeholder?: string;
-  /** Show a search box. Defaults to on for lists longer than 8. */
+  /** Show a search box. Defaults to on for lists longer than 8, and always on with allowNew. */
   searchable?: boolean;
+  /**
+   * Lets the user give a value that isn't in the list: what they type in the
+   * search box, turned into the value it will be saved as (e.g. tidied and in
+   * capitals), is offered as `Add "…"` when no option has that value.
+   */
+  allowNew?: (typed: string) => string;
   disabled?: boolean;
   id?: string;
   className?: string;
@@ -47,6 +53,7 @@ export function Select({
   onChange,
   placeholder = "Choose…",
   searchable,
+  allowNew,
   disabled,
   id,
   className = "",
@@ -58,7 +65,8 @@ export function Select({
   const controlled = value !== undefined;
   const [inner, setInner] = useState(defaultValue);
   const current = controlled ? value : inner;
-  const selected = options.find((o) => o.value === current);
+  // A value given with allowNew is not among the options: it is shown as it is.
+  const selected = options.find((o) => o.value === current) ?? (allowNew && current ? { value: current, label: current } : undefined);
 
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -70,13 +78,16 @@ export function Select({
   const panel = useRef<HTMLDivElement>(null);
   const search = useRef<HTMLInputElement>(null);
   const typeahead = useRef({ text: "", at: 0 });
-  const withSearch = searchable ?? options.length > SEARCH_THRESHOLD;
+  const withSearch = !!allowNew || (searchable ?? options.length > SEARCH_THRESHOLD);
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const q = query.trim().replace(/\s+/g, " ").toLowerCase();
     if (!q) return options;
-    return options.filter((o) => `${o.label} ${o.hint ?? ""} ${o.group ?? ""}`.toLowerCase().includes(q));
-  }, [options, query]);
+    const found = options.filter((o) => `${o.label} ${o.hint ?? ""} ${o.group ?? ""}`.toLowerCase().includes(q));
+    const typed = allowNew?.(query) ?? "";
+    // What was typed, as a new value, after the matches: picking an existing one stays the easy choice.
+    return typed && !options.some((o) => o.value === typed) ? [...found, { value: typed, label: `Add "${typed}"` }] : found;
+  }, [options, query, allowNew]);
 
   const choose = useCallback(
     (o: SelectOption) => {

@@ -25,6 +25,9 @@ export type StaffFormValues = {
   fillsOwnTna: boolean;
 };
 
+/** A typed plant as the staff record keeps it (see the staff schema): single spaces, capitals, at most 60 characters. */
+const plantAsSaved = (typed: string) => typed.trim().replace(/\s+/g, " ").toUpperCase().slice(0, 60);
+
 export function StaffForm({
   action,
   initial,
@@ -144,13 +147,14 @@ export function StaffForm({
               options={[{ value: "", label: "Not recorded" }, ...GENDERS.map((g) => ({ value: g, label: GENDER_LABELS[g] }))]}
             />
           </Field>
-          <Field label="Plant" name="plant" state={state} hint="Where they work, e.g. PEGOH PLANT. Pick one from the list or type a new one.">
-            <input {...fieldProps("plant", state)} defaultValue={initial.plant} className="input" maxLength={60} list="staff-plants" autoComplete="off" />
-            <datalist id="staff-plants">
-              {plants.map((p) => (
-                <option key={p} value={p} />
-              ))}
-            </datalist>
+          <Field label="Plant" name="plant" state={state} hint="Where they work, e.g. PEGOH PLANT. Pick one, or type a new one and add it.">
+            <Select
+              {...fieldProps("plant", state)}
+              defaultValue={initial.plant}
+              placeholder="None"
+              options={[{ value: "", label: "None" }, ...plants.map((p) => ({ value: p, label: p }))]}
+              allowNew={plantAsSaved}
+            />
           </Field>
           <Field label="Date joined" name="dateJoined" state={state}>
             <DateField {...fieldProps("dateJoined", state)} defaultValue={initial.dateJoined} />

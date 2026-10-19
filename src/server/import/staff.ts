@@ -56,7 +56,7 @@ export async function importStaff(run: ImportRun) {
   const keptDepartments = new Set(oldDepartments.filter((d) => !deletedDepartments.has(d.id)).map((d) => d.id));
   const sectionDepartment = new Map(oldSections.map((s) => [s.id, s.department_id]));
 
-  // How many people have each old password: one that is shared must be changed at first sign-in.
+  // How many working staff have each old password, to list those on a shared one who can sign in.
   const sharing = new Map<string, number>();
   for (const u of users) {
     const md5 = cleanMd5(u.password);
@@ -114,10 +114,12 @@ export async function importStaff(run: ImportRun) {
     for (const word of old.unknown) run.issue(P, "A role word v2 doesn't know: no role given for it", "user", u.id, word);
     const mine = new Set<RoleCode>(old.roles);
     if (whitelisted.has(staffNo.value)) mine.add("SKILL_EVALUATOR");
-    if (mine.size && !active) run.issue(P, "Roles not carried: the person has resigned", "user", u.id, [...mine].join(", "));
-    else if (mine.size) roles.set(u.id, mine);
+    // Resigned staff keep their roles and old password too (decided 15 Oct 2026). They can't sign in while resigned;
+    // made active again, they have both back.
+    if (mine.size && !active) run.issue(P, "Resigned, roles kept: they have them again if made active", "user", u.id, [...mine].join(", "));
+    if (mine.size) roles.set(u.id, mine);
 
-    const md5 = active ? cleanMd5(u.password) : null; // resigned staff can't sign in: their old password is left behind
+    const md5 = cleanMd5(u.password);
     rows.push({
       legacyId: u.id,
       staffNo: staffNo.value,
@@ -167,7 +169,7 @@ export async function importStaff(run: ImportRun) {
   for (const h of divisionHeads) headOf.set(h.who, [...(headOf.get(h.who) ?? []), "division head"]);
   for (const r of rows) {
     const what = [...(roles.get(r.legacyId) ?? []), ...(headOf.get(r.legacyId) ?? [])];
-    if (what.length && r.legacyMd5 && oldPasswordShared(sharing.get(r.legacyMd5) ?? 0))
+    if (r.status === "ACTIVE" && what.length && r.legacyMd5 && oldPasswordShared(sharing.get(r.legacyMd5) ?? 0))
       run.issue(
         P,
         "Has a role or heads a department, and keeps the shared old password: anyone who knows it can sign in as them",
@@ -278,23 +280,23 @@ export async function importStaff(run: ImportRun) {
   run.count(
     P,
     "L&D admins",
-    n(notResigned, (u) => (u.roletype ?? "").toUpperCase() === "ADMIN"),
+    n(users, (u) => (u.roletype ?? "").toUpperCase() === "ADMIN"),
     await roleCount("LD_ADMIN"),
-    "active staff only",
+    "resigned staff too",
   );
   run.count(
     P,
     "Main clerks",
-    n(notResigned, (u) => (u.roletype ?? "").toUpperCase() === "CLERK"),
+    n(users, (u) => (u.roletype ?? "").toUpperCase() === "CLERK"),
     await roleCount("MAIN_CLERK"),
-    "active staff only; every old clerk is marked MAIN",
+    "resigned staff too; every old clerk is marked MAIN",
   );
   run.count(
     P,
     "Skill matrix evaluators",
-    n(notResigned, (u) => whitelisted.has(cleanStaffNo(u.staffno).value)),
+    n(users, (u) => whitelisted.has(cleanStaffNo(u.staffno).value)),
     await roleCount("SKILL_EVALUATOR"),
-    "the whitelist, active staff only",
+    "the whitelist, resigned staff too",
   );
   run.count(
     P,
@@ -311,16 +313,16 @@ export async function importStaff(run: ImportRun) {
   run.count(
     P,
     "Old passwords carried",
-    notResigned.length,
+    n(users, (u) => !!cleanMd5(u.password)),
     await v2({ legacyMd5: { not: null } }, (r) => !!r.legacyMd5),
-    "active staff only; the same password, stored the modern way at first sign-in",
+    "resigned staff too; the same password, stored the modern way at first sign-in",
   );
   const shared = [...sharing].filter(([, c]) => oldPasswordShared(c)).map(([md5]) => md5);
   run.count(
     P,
     "Old password shared with others",
     [...sharing.values()].filter(oldPasswordShared).reduce((a, b) => a + b, 0),
-    await v2({ legacyMd5: { in: shared } }, (r) => !!r.legacyMd5 && shared.includes(r.legacyMd5)),
+    await v2({ status: "ACTIVE", legacyMd5: { in: shared } }, (r) => r.status === "ACTIVE" && !!r.legacyMd5 && shared.includes(r.legacyMd5)),
     "they keep it (decided 15 Oct 2026): anyone who knows it can sign in as them",
   );
   run.count(

@@ -132,7 +132,7 @@ The recommendations were accepted as written, except rows 6, 9, 13 and 14, which
 | 12 | **A TNA whose rows disagree on status** | Approved only if every row is; otherwise Submitted if any row was; otherwise Draft. | A partly approved TNA goes back to the HOD to approve once more. |
 | 13 | **Department names typed as text** (TNA by grade, TNI) | I list every name that doesn't match with my suggested department; L&D confirm or correct each one, and then all are imported (§3.1). | A short checking job for L&D (about 20 names). |
 | 14 | **Plant** | **Imported**: a Plant field is added to the staff record, shown on the staff page and in the staff export. | One more field on the staff form. It is free text in the old system (11 values), so it stays a short list L&D can add to. |
-| 15 | **Old passwords** | Carried for active staff only, as the one-time `legacyMd5`. Resigned staff get none. | None: resigned staff can't sign in anyway, and it keeps weak hashes of 2,900 people out of the new database. |
+| 15 | **Old passwords** | **Changed 15 Oct 2026: carried for everyone, resigned staff too**, as the one-time `legacyMd5`, so someone made active again signs in with the password they had. Resigned staff still can't sign in while resigned. | The new database holds the weak old hashes of 2,900 more people. First decided: active staff only. |
 | 16 | **The final copy** | On cutover day someone takes a fresh copy of the live server's database and the old system is made read-only. | Needs whoever runs the live server. The copy on this machine is only for rehearsals. |
 
 ### 3.1 Importing everything, and where help is needed
@@ -254,12 +254,14 @@ Modules 0 and 1 are small and could be reviewed together.
 - **The staff part** (`src/server/import/staff.ts`): all 6,003 old staff records come across, 3,087 active and 2,916
   resigned, with designation, gender, plant, join date, job grade, email and their department and section.
   Every count in the comparison matches the old system, including the number of staff in each of the 42 departments.
-- **Roles**: 6 L&D admins, 62 main clerks and 146 skill matrix evaluators, active staff only. 40 departments have
-  their HOD and 6 divisions their head. 62 non-executives are marked as filling in their own TNA.
+- **Roles**: 6 L&D admins, 62 main clerks and 146 skill matrix evaluators among active staff, and since 15 Oct 2026
+  the 16 resigned people's roles too (they have them again if made active). 40 departments have
+  their HOD and 6 divisions their head: heads stay active staff only, so no approval waits on someone who can't sign in. 62 non-executives are marked as filling in their own TNA.
 - **The holding department**, "No department (old system)" under "No division (old system)", has 244 people: 102
   with no department and 142 from the department marked (DELETED). 243 are resigned; **one is active and needs a real
   department**.
-- **Old passwords**: carried for the 3,087 active staff only. **2,938 of them share one password** (the one they
+- **Old passwords**: carried for all 6,003 staff, resigned too (changed 15 Oct 2026, decision 15). Of the 3,087
+  active staff, **2,938 share one password** (the one they
   were given). **Everyone keeps their old password, shared or not: no one is made to choose a new one** (decided
   15 Oct 2026, replacing the first plan that 2,945 people on a shared password must change it at first sign-in).
   The downside, accepted: anyone who knows the shared password can sign in as any of them with their staff number.
@@ -274,7 +276,7 @@ Modules 0 and 1 are small and could be reviewed together.
   depends on them, and leaves the org chart alone.
 - **Listed in the import report for HR**: the 1,184 with a blank status (imported as active), 34 staff numbers with a
   space or symbol in them (imported as they are, since people sign in with them, but the staff form would refuse
-  them), 16 resigned people whose roles were not carried, 7 marked HOD who head no department, and one person whose
+  them), 16 resigned people whose roles are kept, 7 marked HOD who head no department, and one person whose
   section belongs to another department.
 - **Tests**: 18 more unit tests in `tests/rules/import.test.ts`; `staff-changes.spec.ts` covers Plant on the form,
   the record, the export and the Excel import.

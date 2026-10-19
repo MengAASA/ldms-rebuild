@@ -18,7 +18,10 @@ test("admin adds a staff member, marks them resigned and reinstates them", async
   await page.getByLabel("Full name").fill("Nurul Izzah binti Othman");
   await choose(page, "Designation", "Executive");
   await choose(page, "Gender", "Female");
-  await page.getByLabel("Plant").fill("pegoh  plant"); // saved in capitals, spaces tidied
+  // A plant not in the list is typed and added, shown as it will be saved: in capitals, spaces tidied.
+  await page.getByLabel("Plant").click();
+  await page.getByLabel("Search options").fill(`seremban  plant ${suffix}`);
+  await page.getByRole("option", { name: `Add "SEREMBAN PLANT ${suffix}"` }).click();
   await choose(page, "Department", "Quality Control");
   await choose(page, "Section", "Final Inspection");
   await page.getByRole("button", { name: "Add staff" }).click();
@@ -27,7 +30,7 @@ test("admin adds a staff member, marks them resigned and reinstates them", async
   await expect(page.getByRole("heading", { name: "Nurul Izzah binti Othman" })).toBeVisible();
   await expect(page.getByText("HOD of the department")).toBeVisible();
   await expect(page.getByText("GenderFemale")).toBeVisible();
-  await expect(page.getByText("PlantPEGOH PLANT")).toBeVisible();
+  await expect(page.getByText(`PlantSEREMBAN PLANT ${suffix}`)).toBeVisible();
 
   await page.getByRole("button", { name: "Mark as resigned" }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Mark as resigned" }).click();
